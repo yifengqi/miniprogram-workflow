@@ -8,6 +8,38 @@
     </div>
     
     <template v-if="projectStore.currentProject">
+      <!-- ⭐ 自动化进度显示 -->
+      <div v-if="isAutoGenerating" class="card auto-progress-card">
+        <div class="auto-header">
+          <el-icon class="rotating"><Loading /></el-icon>
+          <div>
+            <h3>🤖 AI 自动化进行中</h3>
+            <p>系统正在自动生成PRD，您无需任何操作</p>
+          </div>
+        </div>
+        
+        <el-steps :active="autoStep" align-center finish-status="success">
+          <el-step title="客户版PRD" :description="autoSteps[0].desc" />
+          <el-step title="开发版PRD" :description="autoSteps[1].desc" />
+          <el-step title="等待您确认" :description="autoSteps[2].desc" />
+        </el-steps>
+        
+        <el-progress 
+          v-if="autoProgress < 100"
+          :percentage="autoProgress" 
+          :status="autoProgress === 100 ? 'success' : undefined"
+          :stroke-width="12"
+        />
+        
+        <div class="auto-tips">
+          <el-alert type="info" :closable="false">
+            <template #title>
+              💡 系统已应用 <strong>{{ appliedExperiencesCount }}</strong> 条历史经验，避免常见问题
+            </template>
+          </el-alert>
+        </div>
+      </div>
+      
       <!-- 需求检查 -->
       <div v-if="!projectStore.currentProject.requirement" class="card warning-card">
         <el-icon><Warning /></el-icon>
@@ -166,16 +198,19 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import { View, EditPen, Loading } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { useSettingsStore } from '@/stores/settings'
+import { useExperienceStore } from '@/stores/experience'  // ⭐ 新增
 import { callAI, PRD_PROMPTS } from '@/api/ai'
+import { aiQueue } from '@/utils/aiQueue'  // ⭐ 新增
 
 const projectStore = useProjectStore()
 const settingsStore = useSettingsStore()
+const experienceStore = useExperienceStore()  // ⭐ 新增
 
 const activeTab = ref('client')
 const previewMode = ref('preview')
@@ -183,6 +218,18 @@ const generating = ref(false)
 const generatingType = ref('')
 const generatingClient = ref(false)
 const generatingDev = ref(false)
+
+// ⭐ 自动化状态
+const isAutoGenerating = ref(false)
+const autoStep = ref(0)
+const autoProgress = ref(0)
+const autoSteps = ref([
+  { desc: '准备中...' },
+  { desc: '等待中...' },
+  { desc: '等待中...' }
+])
+const appliedExperiencesCount = ref(0)
+let progressInterval = null
 
 const editableClientPrd = ref('')
 const editableDevPrd = ref('')
@@ -351,6 +398,69 @@ function downloadContent(type) {
   
   ElMessage.success('文件已下载')
 }
+
+// ⭐ 检测自动化进度
+function checkAutomationProgress() {
+  const project = projectStore.currentProject
+  if (!project || !project.autoMode) {
+    isAutoGenerating.value = false
+    return
+  }
+  
+  const queueStatus = aiQueue.getStatus()
+  
+  // 检查是否有任务在队列中
+  if (queueStatus.running || queueStatus.queueLength > 0) {
+    isAutoGenerating.value = true
+    
+    // 更新步骤状态
+    if (!project.prdClient) {
+      autoStep.value = 0
+      autoSteps.value[0].desc = '正在生成中... 🤖'
+      autoProgress.value = 30
+    } else if (!project.prdDev) {
+      autoStep.value = 1
+      autoSteps.value[0].desc = '已完成 ✓'
+      autoSteps.value[1].desc = '正在生成中... 🤖'
+      autoProgress.value = 65
+    } else {
+      autoStep.value = 2
+      autoSteps.value[0].desc = '已完成 ✓'
+      autoSteps.value[1].desc = '已完成 ✓'
+      autoSteps.value[2].desc = '请您查看确认 👀'
+      autoProgress.value = 100
+      isAutoGenerating.value = false
+    }
+    
+    // 计算应用的经验数
+    const experiences = experienceStore.getRelevantExperiences({
+      projectType: project.requirement?.appType,
+      stage: 'prd_generation'
+    })
+    appliedExperiencesCount.value = Math.min(experiences.length, 3)
+  } else {
+    // 队列空了，检查是否完成
+    if (project.prdClient && project.prdDev) {
+      isAutoGenerating.value = false
+      autoProgress.value = 100
+    }
+  }
+}
+
+// ⭐ 初始化和清理
+onMounted(() => {
+  // 检查当前项目是否在自动化中
+  checkAutomationProgress()
+  
+  // 定期检查进度
+  progressInterval = setInterval(checkAutomationProgress, 2000)
+})
+
+onUnmounted(() => {
+  if (progressInterval) {
+    clearInterval(progressInterval)
+  }
+})
 </script>
 
 <style scoped>
@@ -382,6 +492,86 @@ function downloadContent(type) {
   margin: 0;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+/* ⭐ 自动化进度卡片 */
+.auto-progress-card {
+  margin-bottom: 24px;
+  padding: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+}
+
+.auto-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.auto-header .el-icon {
+  font-size: 48px;
+  color: white;
+}
+
+.auto-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.auto-header p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.auto-progress-card :deep(.el-steps) {
+  margin: 24px 0;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.auto-progress-card :deep(.el-step__title) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.auto-progress-card :deep(.el-step__description) {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.auto-progress-card :deep(.el-step__icon) {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.auto-progress-card :deep(.el-step__icon.is-success) {
+  border-color: #67c23a;
+  color: #67c23a;
+}
+
+.auto-tips {
+  margin-top: 16px;
+}
+
+.auto-tips :deep(.el-alert) {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+}
+
+.auto-tips :deep(.el-alert__title) {
+  color: white;
+}
+
+.rotating {
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .generate-section {

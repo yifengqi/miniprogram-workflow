@@ -3,6 +3,7 @@ import { callAI, generateClientPRD, generateDevPRD } from '@/api/ai'
 import { useProjectStore } from '@/stores/project'
 import { useRequirementPoolStore } from '@/stores/requirementPool'
 import { useExperienceStore } from '@/stores/experience'
+import { aiNotification } from './aiNotification'  // ⭐ 新增
 
 /**
  * AI任务队列
@@ -147,17 +148,26 @@ class AITaskQueue {
     const projectStore = useProjectStore()
     const experienceStore = useExperienceStore()
     
-    ElNotification({
-      title: '开始生成',
-      message: `正在为「${project.name}」生成客户版PRD...`,
-      type: 'info'
-    })
+    // ⭐ 通知开始
+    aiNotification.taskStart(
+      task.id,
+      '🤖 开始生成客户版PRD',
+      `正在为「${project.name}」生成客户版PRD...`
+    )
     
     // 🔴 应用历史经验
     const relevantExp = experienceStore.getRelevantExperiences({
       projectType: project.requirement?.appType,
       stage: 'prd_generation'
     })
+    
+    // ⭐ 通知应用经验
+    if (relevantExp.length > 0) {
+      aiNotification.experienceApplied(
+        relevantExp.length,
+        relevantExp.slice(0, 3)
+      )
+    }
     
     // 生成PRD
     const prdContent = await generateClientPRD(project.requirement, {
@@ -167,16 +177,17 @@ class AITaskQueue {
     // 保存
     projectStore.savePRD('client', prdContent)
     
+    // ⭐ 通知完成
+    aiNotification.taskComplete(
+      task.id,
+      '✅ 客户版PRD生成完成',
+      '即将自动生成开发版PRD...'
+    )
+    
     // 🔴 自动触发下一步：生成开发版PRD
     if (project.autoMode !== false) {
       this.addTask(project.id, 'generate_prd_dev', 'high')
     }
-    
-    ElNotification({
-      title: '生成完成',
-      message: `客户版PRD已生成`,
-      type: 'success'
-    })
   }
   
   /**
@@ -185,11 +196,12 @@ class AITaskQueue {
   async taskGenerateDevPRD(project, task) {
     const projectStore = useProjectStore()
     
-    ElNotification({
-      title: '开始生成',
-      message: `正在为「${project.name}」生成开发版PRD...`,
-      type: 'info'
-    })
+    // ⭐ 通知开始
+    aiNotification.taskStart(
+      task.id,
+      '🤖 开始生成开发版PRD',
+      `正在为「${project.name}」生成开发版PRD...`
+    )
     
     // 生成PRD
     const prdContent = await generateDevPRD(
@@ -200,12 +212,12 @@ class AITaskQueue {
     // 保存
     projectStore.savePRD('dev', prdContent)
     
-    ElNotification({
-      title: 'PRD生成完成',
-      message: `客户版和开发版PRD都已生成，请查看确认`,
-      type: 'success',
-      duration: 0  // 不自动关闭
-    })
+    // ⭐ 通知完成
+    aiNotification.taskComplete(
+      task.id,
+      '🎉 PRD生成完成',
+      '客户版和开发版PRD都已生成，请查看确认'
+    )
   }
   
   /**
