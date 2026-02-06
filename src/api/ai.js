@@ -689,140 +689,252 @@ function robustJsonParse(rawContent, logId) {
 }
 
 /**
- * 生成Demo代码
- * @param {Object} prdDev - 开发版PRD内容
+ * ⭐ 分步生成Demo代码（可靠版）
+ * 
+ * 第1步：AI生成项目架构+文件清单（小JSON，不容易出错）
+ * 第2步：逐个文件让AI生成代码（每次只生成1个文件内容）
+ * 
+ * @param {string} prdDev - 开发版PRD内容
  * @param {Object} requirement - 需求数据
- * @param {Function} onProgress - 进度回调
+ * @param {Function} onProgress - 进度回调 ({ step, total, current, message })
  * @returns {Promise<Object>} Demo代码结构
  */
 export async function generateDemoCode(prdDev, requirement, onProgress) {
-  const prompt = `你是一个资深的小程序开发专家，请根据以下PRD开发版内容，生成一个完整的小程序Demo代码。
+  const { aiLogger } = await import('@/utils/aiLogger')
+  
+  // 需求内容
+  let reqContext = ''
+  if (requirement?.rawMarkdown) {
+    reqContext = requirement.rawMarkdown.slice(0, 3000)  // 截取避免太长
+  } else {
+    reqContext = JSON.stringify(requirement, null, 2)
+  }
+  
+  // ========== 第1步：生成架构和文件清单 ==========
+  const step1LogId = aiLogger.start('generate_demo_step1_plan', { prdLength: prdDev?.length })
+  
+  if (onProgress) onProgress({ step: 1, total: 2, current: '生成项目架构...', percentage: 5 })
+  
+  const planPrompt = `你是一个资深的微信小程序开发专家。请根据以下PRD，规划一个完整的小程序项目架构。
 
-技术栈要求：
-- 框架：微信小程序原生
-- 语言：JavaScript ES6+
-- 样式：WXSS
-- 数据：微信云开发
+⚠️ 只输出纯JSON，不要加任何说明文字。
 
-代码要求：
-1. 完整的项目结构
-2. 所有必需的页面文件（.js, .wxml, .wxss, .json）
-3. 核心业务逻辑实现
-4. 完整的云函数代码
-5. 项目配置文件（app.json, project.config.json等）
-6. README.md 使用说明
-
-请按以下JSON格式输出：
+请输出以下JSON格式：
 {
   "projectName": "项目名称",
   "structure": {
-    "description": "项目结构说明",
-    "tree": "文件树（文本格式）"
+    "description": "项目结构说明（一句话）",
+    "tree": "文件树（纯文本缩进格式）"
   },
   "files": [
-    {
-      "path": "app.js",
-      "type": "javascript",
-      "content": "文件内容",
-      "description": "文件说明"
-    },
-    {
-      "path": "app.json",
-      "type": "json",
-      "content": "配置内容",
-      "description": "全局配置"
-    },
-    {
-      "path": "pages/index/index.js",
-      "type": "javascript",
-      "content": "页面逻辑",
-      "description": "首页逻辑"
-    }
-    // ... 更多文件
+    { "path": "app.js", "type": "javascript", "description": "全局逻辑" },
+    { "path": "app.json", "type": "json", "description": "全局配置" },
+    { "path": "app.wxss", "type": "wxss", "description": "全局样式" },
+    { "path": "pages/index/index.js", "type": "javascript", "description": "首页逻辑" },
+    { "path": "pages/index/index.wxml", "type": "wxml", "description": "首页模板" },
+    { "path": "pages/index/index.wxss", "type": "wxss", "description": "首页样式" },
+    { "path": "pages/index/index.json", "type": "json", "description": "首页配置" }
   ],
   "cloudFunctions": [
-    {
-      "name": "函数名",
-      "path": "cloudfunctions/xxx/index.js",
-      "content": "云函数代码",
-      "description": "功能说明"
-    }
+    { "name": "函数名", "path": "cloudfunctions/xxx/index.js", "description": "功能说明" }
   ],
   "setup": {
-    "steps": [
-      "1. 在微信开发者工具中导入项目",
-      "2. 配置云开发环境",
-      "3. ..."
-    ],
-    "notes": [
-      "注意事项1",
-      "注意事项2"
-    ]
+    "steps": ["1. 在微信开发者工具中导入项目", "2. 开通云开发", "3. 上传云函数"],
+    "notes": ["注意事项"]
   }
 }
 
+要求：
+1. files数组里只列出文件路径和说明，不要包含content（代码内容后面单独生成）
+2. 文件数量控制在8-15个核心文件
+3. 技术栈：微信小程序原生 + 云开发
+
 ---
 开发版PRD：
-${prdDev}
+${prdDev?.slice(0, 4000) || '(无PRD)'}
 
-原始需求：
-${JSON.stringify(requirement, null, 2)}
+需求摘要：
+${reqContext.slice(0, 1500)}
 `
 
-  const messages = [
-    {
-      role: 'system',
-      content: '你是一个资深的微信小程序开发专家，精通完整项目架构和代码实现。必须严格输出纯JSON格式，不要在JSON前后添加任何说明文字或markdown代码块标记。'
-    },
-    {
-      role: 'user',
-      content: prompt
-    }
-  ]
-  
-  // ⭐ 接入日志系统
-  const { aiLogger } = await import('@/utils/aiLogger')
-  const logId = aiLogger.start('generate_demo', { prdLength: prdDev?.length, requirement: requirement?.appName })
-  
-  // 使用流式API获取进度
-  if (onProgress) {
-    let fullContent = ''
-    try {
-      await callAIStream(messages, (chunk) => {
-        fullContent += chunk
-        onProgress(fullContent)
-        aiLogger.updateRawContent(logId, fullContent)
-      }, {
-        temperature: 0.3,
-        maxTokens: 16384
-      })
-    } catch (streamError) {
-      aiLogger.error(logId, streamError, fullContent)
-      throw streamError
-    }
+  let plan
+  try {
+    const planResponse = await callAI([
+      { role: 'system', content: '你是微信小程序架构师。只输出纯JSON，不加任何额外文字。' },
+      { role: 'user', content: planPrompt }
+    ], { temperature: 0.3, maxTokens: 2048 })
     
-    // ⭐ 增强的JSON解析（多种容错策略）
-    const parsed = robustJsonParse(fullContent, logId)
-    aiLogger.success(logId, { filesCount: parsed.files?.length })
-    return parsed
-  } else {
-    // 非流式调用
-    let response = ''
-    try {
-      response = await callAI(messages, {
-        temperature: 0.3,
-        maxTokens: 16384
-      })
-      aiLogger.updateRawContent(logId, response)
-    } catch (callError) {
-      aiLogger.error(logId, callError, response)
-      throw callError
-    }
+    aiLogger.updateRawContent(step1LogId, planResponse)
+    plan = robustJsonParse(planResponse)
+    aiLogger.success(step1LogId, { filesCount: plan.files?.length })
     
-    const parsed = robustJsonParse(response, logId)
-    aiLogger.success(logId, { filesCount: parsed.files?.length })
-    return parsed
+  } catch (error) {
+    aiLogger.error(step1LogId, error)
+    throw new Error('第1步失败：无法生成项目架构。' + error.message)
   }
+  
+  if (!plan.files || plan.files.length === 0) {
+    throw new Error('AI返回的项目架构中没有文件列表')
+  }
+  
+  if (onProgress) onProgress({ step: 1, total: 2, current: `架构完成，共 ${plan.files.length} 个文件`, percentage: 15 })
+  
+  // ========== 第2步：逐个文件生成代码 ==========
+  const totalFiles = plan.files.length + (plan.cloudFunctions?.length || 0)
+  let completedFiles = 0
+  
+  // 批量生成：每次发2-3个相关文件一起生成（减少调用次数）
+  const fileBatches = createBatches(plan.files, 3)
+  
+  for (const batch of fileBatches) {
+    const batchLogId = aiLogger.start('generate_demo_step2_files', { 
+      files: batch.map(f => f.path) 
+    })
+    
+    const fileNames = batch.map(f => `${f.path} (${f.description})`).join('\n')
+    
+    if (onProgress) {
+      const pct = 15 + Math.round((completedFiles / totalFiles) * 80)
+      onProgress({ 
+        step: 2, total: totalFiles, current: `生成文件: ${batch[0].path}...`, 
+        percentage: pct 
+      })
+    }
+    
+    const filePrompt = `请为以下微信小程序文件生成完整代码。
+
+项目名：${plan.projectName}
+项目说明：${plan.structure?.description || ''}
+
+需要生成的文件：
+${fileNames}
+
+PRD参考（摘要）：
+${prdDev?.slice(0, 2000) || '(无)'}
+
+⚠️ 只输出纯JSON数组格式，不加任何说明文字：
+[
+  {
+    "path": "文件路径",
+    "type": "文件类型",
+    "content": "完整的文件代码内容",
+    "description": "文件说明"
+  }
+]
+
+要求：
+1. 每个文件的content必须是完整可运行的代码
+2. 代码要有中文注释
+3. 业务逻辑要符合PRD描述
+`
+
+    try {
+      const fileResponse = await callAI([
+        { role: 'system', content: '你是微信小程序开发专家。只输出纯JSON数组，不加任何额外文字。代码内容中的双引号用转义处理。' },
+        { role: 'user', content: filePrompt }
+      ], { temperature: 0.3, maxTokens: 8192 })
+      
+      aiLogger.updateRawContent(batchLogId, fileResponse)
+      
+      // 解析文件数组
+      let filesArray
+      try {
+        filesArray = robustJsonParse(fileResponse)
+        // 如果解析出来是对象而非数组，尝试取files字段
+        if (!Array.isArray(filesArray)) {
+          filesArray = filesArray.files || filesArray.data || [filesArray]
+        }
+      } catch (parseError) {
+        // 解析失败，用占位内容
+        console.warn('文件批次解析失败，使用占位内容:', parseError.message)
+        filesArray = batch.map(f => ({
+          path: f.path,
+          type: f.type,
+          content: `// ${f.description}\n// AI生成失败，请手动补充代码\n`,
+          description: f.description + ' (生成失败)'
+        }))
+      }
+      
+      // 把生成的代码内容合并回plan
+      filesArray.forEach(generatedFile => {
+        const planFile = plan.files.find(f => f.path === generatedFile.path)
+        if (planFile) {
+          planFile.content = generatedFile.content || ''
+          planFile.description = generatedFile.description || planFile.description
+        } else {
+          // AI可能改了路径，直接追加
+          plan.files.push(generatedFile)
+        }
+      })
+      
+      completedFiles += batch.length
+      aiLogger.success(batchLogId, { generated: filesArray.length })
+      
+    } catch (error) {
+      aiLogger.error(batchLogId, error)
+      // 单批失败不中断整体，用占位内容
+      batch.forEach(f => {
+        const planFile = plan.files.find(pf => pf.path === f.path)
+        if (planFile) {
+          planFile.content = `// ${f.description}\n// 生成失败: ${error.message}\n`
+        }
+      })
+      completedFiles += batch.length
+    }
+  }
+  
+  // 生成云函数代码（如果有的话）
+  if (plan.cloudFunctions && plan.cloudFunctions.length > 0) {
+    const cfLogId = aiLogger.start('generate_demo_step2_cloud', { 
+      functions: plan.cloudFunctions.map(f => f.name) 
+    })
+    
+    if (onProgress) onProgress({ step: 2, total: totalFiles, current: '生成云函数...', percentage: 90 })
+    
+    const cfPrompt = `请为以下微信云函数生成完整代码。
+
+云函数列表：
+${plan.cloudFunctions.map(f => `${f.name} - ${f.description}`).join('\n')}
+
+⚠️ 只输出纯JSON数组：
+[{ "name": "函数名", "path": "路径", "content": "完整代码", "description": "说明" }]
+`
+    try {
+      const cfResponse = await callAI([
+        { role: 'system', content: '你是云函数开发专家。只输出纯JSON数组。' },
+        { role: 'user', content: cfPrompt }
+      ], { temperature: 0.3, maxTokens: 4096 })
+      
+      aiLogger.updateRawContent(cfLogId, cfResponse)
+      let cfArray = robustJsonParse(cfResponse)
+      if (!Array.isArray(cfArray)) cfArray = cfArray.cloudFunctions || [cfArray]
+      
+      plan.cloudFunctions = cfArray
+      aiLogger.success(cfLogId, { generated: cfArray.length })
+    } catch (error) {
+      aiLogger.error(cfLogId, error)
+      // 云函数失败不中断
+      plan.cloudFunctions.forEach(f => {
+        f.content = `// ${f.description}\n// 生成失败: ${error.message}\n`
+      })
+    }
+  }
+  
+  if (onProgress) onProgress({ step: 2, total: totalFiles, current: '全部完成!', percentage: 100 })
+  
+  return plan
+}
+
+/**
+ * 将数组分成固定大小的批次
+ */
+function createBatches(arr, batchSize) {
+  const batches = []
+  for (let i = 0; i < arr.length; i += batchSize) {
+    batches.push(arr.slice(i, i + batchSize))
+  }
+  return batches
+}
 }
 
 /**

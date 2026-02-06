@@ -293,8 +293,12 @@ class AITaskQueue {
         prdDev,
         project.requirement,
         (progress) => {
-          const percentage = Math.min(90, Math.floor(progress.length / 100))
-          aiNotification.taskProgress(task.id, `Phase ${phase} 生成中...`, percentage)
+          // ⭐ 新版progress是对象 { step, total, current, percentage }
+          const pct = progress?.percentage || Math.min(90, Math.floor((progress?.length || 0) / 100))
+          const msg = progress?.current || `Phase ${phase} 生成中...`
+          aiNotification.taskProgress(task.id, msg, pct)
+          // 保存进度到task，方便UI查询
+          task._progress = progress
         }
       )
       

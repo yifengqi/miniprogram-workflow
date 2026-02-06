@@ -34,17 +34,29 @@
         </el-button>
       </div>
       
-      <!-- Demo生成中 -->
+      <!-- Demo生成中（增强版进度） -->
       <div v-else-if="generatingDemo" class="card generating-card">
         <el-icon class="loading-icon"><Loading /></el-icon>
-        <div>
+        <div style="flex: 1;">
           <h4>正在生成Demo代码...</h4>
-          <p>AI正在根据PRD生成完整的小程序代码，请稍候（预计3-5分钟）</p>
+          <p v-if="demoStepInfo.step === 1">
+            第1步：AI正在规划项目架构和文件清单...
+          </p>
+          <p v-else-if="demoStepInfo.step === 2">
+            第2步：逐个文件生成代码 — {{ demoStepInfo.current || '准备中...' }}
+          </p>
+          <p v-else>
+            AI正在根据PRD生成小程序代码（分步生成，更稳定）
+          </p>
           <el-progress 
-            :percentage="demoProgress" 
-            :status="demoProgress === 100 ? 'success' : undefined"
+            :percentage="demoStepInfo.percentage || demoProgress" 
+            :status="(demoStepInfo.percentage || demoProgress) >= 100 ? 'success' : undefined"
+            :stroke-width="12"
             style="margin-top: 12px; width: 100%;"
           />
+          <div v-if="demoStepInfo.step" class="progress-detail">
+            步骤 {{ demoStepInfo.step }}/2 · {{ demoStepInfo.current || '' }}
+          </div>
         </div>
       </div>
       
@@ -242,6 +254,7 @@ const projectStore = useProjectStore()
 
 const generatingDemo = ref(false)
 const demoProgress = ref(0)
+const demoStepInfo = ref({})  // ⭐ 分步进度信息 { step, total, current, percentage }
 const pushingToGithub = ref(false)
 const setupDialogVisible = ref(false)
 const fileSearchText = ref('')
@@ -297,19 +310,30 @@ function checkDemoProgress() {
   
   if (hasDemoTask) {
     generatingDemo.value = true
-    demoProgress.value = Math.min(95, demoProgress.value + 2)
+    
+    // ⭐ 读取分步进度信息
+    const currentTask = aiQueue.currentTask
+    if (currentTask?.taskType === 'generate_demo' && currentTask._progress) {
+      demoStepInfo.value = currentTask._progress
+      demoProgress.value = currentTask._progress.percentage || demoProgress.value
+    } else {
+      demoProgress.value = Math.min(95, demoProgress.value + 1)
+    }
+    
   } else if (hasPrdTask) {
     // PRD还在生成，Demo还没开始
     generatingDemo.value = true
+    demoStepInfo.value = { step: 0, current: '正在生成PRD，完成后自动生成Demo...' }
     demoProgress.value = Math.min(30, demoProgress.value + 1)
   } else if (activeDemoCode.value) {
     generatingDemo.value = false
     demoProgress.value = 100
+    demoStepInfo.value = {}
   } else {
     // 没有任务也没有Demo，可能任务已失败
     if (generatingDemo.value && demoProgress.value > 0) {
-      // 之前在生成，现在没了，可能失败了
       generatingDemo.value = false
+      demoStepInfo.value = {}
     }
   }
 }
@@ -512,6 +536,13 @@ function goToIteration() {
   margin: 0 0 12px 0;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.progress-detail {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
 }
 
 /* 项目信息卡片 */
