@@ -6,6 +6,7 @@ import { useExperienceStore } from '@/stores/experience'
 import { useIterationStore } from '@/stores/iteration'  // ⭐ 新增
 import { aiNotification } from './aiNotification'
 import { githubService } from './github'
+import { aiLogger } from './aiLogger'
 
 /**
  * AI任务队列
@@ -69,6 +70,12 @@ class AITaskQueue {
         task.status = 'running'
         task.startedAt = new Date().toISOString()
         
+        // ⭐ 记录到AI日志
+        task._logId = aiLogger.start(task.taskType, { 
+          projectId: task.projectId, 
+          phase: task.options?.phase 
+        })
+        
         console.log(`🤖 开始执行任务: ${task.taskType}`)
         
         await this.executeTask(task)
@@ -76,10 +83,14 @@ class AITaskQueue {
         task.status = 'completed'
         task.completedAt = new Date().toISOString()
         
+        aiLogger.success(task._logId, { taskType: task.taskType })
         console.log(`✅ 任务完成: ${task.taskType}`)
         
       } catch (error) {
         console.error(`❌ 任务失败: ${task.taskType}`, error)
+        
+        // ⭐ 记录错误到AI日志
+        aiLogger.error(task._logId, error)
         
         task.attempts++
         task.error = error.message
@@ -87,7 +98,7 @@ class AITaskQueue {
         // 重试逻辑
         if (task.attempts < task.maxAttempts) {
           console.log(`🔄 重试任务 (${task.attempts}/${task.maxAttempts})`)
-          this.queue.unshift(task)  // 重新加入队列
+          this.queue.unshift(task)
         } else {
           task.status = 'failed'
           

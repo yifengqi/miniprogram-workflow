@@ -100,6 +100,9 @@
         </router-view>
       </el-main>
     </el-container>
+    
+    <!-- ⭐ AI监控面板（全局浮动） -->
+    <AIMonitor />
   </div>
 </template>
 
@@ -109,6 +112,7 @@ import { useRoute } from 'vue-router'
 import { useRequirementPoolStore } from '@/stores/requirementPool'  // ⭐ 新增
 import { useExperienceStore } from '@/stores/experience'  // ⭐ 新增
 import { useIterationStore } from '@/stores/iteration'  // ⭐ Phase 3
+import AIMonitor from '@/components/AIMonitor.vue'  // ⭐ AI监控面板
 
 const route = useRoute()
 const poolStore = useRequirementPoolStore()  // ⭐ 新增

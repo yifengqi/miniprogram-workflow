@@ -626,6 +626,69 @@ export async function generateDevPRD(requirement, clientPRD, options = {}) {
 }
 
 /**
+ * ⭐ 增强的JSON解析器（多重容错）
+ * AI返回的JSON经常不规范，这里做多重修复尝试
+ */
+function robustJsonParse(rawContent, logId) {
+  // aiLogger is imported dynamically in the caller; here we just use console for fallback
+  
+  // 策略1：直接解析
+  try {
+    return JSON.parse(rawContent)
+  } catch (e) { /* 继续尝试 */ }
+  
+  // 策略2：去掉 markdown 代码块标记
+  let cleaned = rawContent
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+  
+  try {
+    return JSON.parse(cleaned)
+  } catch (e) { /* 继续尝试 */ }
+  
+  // 策略3：提取最外层 { ... }
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0])
+    } catch (e) { /* 继续尝试 */ }
+    
+    // 策略4：修复常见的JSON错误
+    let fixed = jsonMatch[0]
+      .replace(/,\s*}/g, '}')          // 尾逗号 ,}
+      .replace(/,\s*]/g, ']')          // 尾逗号 ,]
+      .replace(/'/g, '"')              // 单引号→双引号
+      .replace(/\n/g, '\\n')           // 换行符
+      .replace(/\t/g, '\\t')           // Tab
+      .replace(/\\n"/g, '"')           // 修复字符串末尾
+    
+    try {
+      return JSON.parse(fixed)
+    } catch (e) { /* 继续尝试 */ }
+  }
+  
+  // 策略5：尝试按行截取到最后一个 }
+  const lastBrace = rawContent.lastIndexOf('}')
+  const firstBrace = rawContent.indexOf('{')
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const sliced = rawContent.slice(firstBrace, lastBrace + 1)
+    try {
+      return JSON.parse(sliced)
+    } catch (e) { /* 全部失败 */ }
+  }
+  
+  // 全部失败，记录日志并抛出详细错误
+  const errorMsg = `AI返回的内容无法解析为JSON。内容长度: ${rawContent.length}字符。\n前200字: ${rawContent.slice(0, 200)}\n后200字: ${rawContent.slice(-200)}`
+  console.error(errorMsg)
+  
+  // 日志由调用方处理
+  
+  throw new Error('AI生成的代码格式有误，请打开监控面板查看AI返回的原始内容。可以尝试重新生成。')
+}
+
+/**
  * 生成Demo代码
  * @param {Object} prdDev - 开发版PRD内容
  * @param {Object} requirement - 需求数据
@@ -709,7 +772,7 @@ ${JSON.stringify(requirement, null, 2)}
   const messages = [
     {
       role: 'system',
-      content: '你是一个资深的微信小程序开发专家，精通完整项目架构和代码实现。'
+      content: '你是一个资深的微信小程序开发专家，精通完整项目架构和代码实现。必须严格输出纯JSON格式，不要在JSON前后添加任何说明文字或markdown代码块标记。'
     },
     {
       role: 'user',
@@ -717,42 +780,48 @@ ${JSON.stringify(requirement, null, 2)}
     }
   ]
   
+  // ⭐ 接入日志系统
+  const { aiLogger } = await import('@/utils/aiLogger')
+  const logId = aiLogger.start('generate_demo', { prdLength: prdDev?.length, requirement: requirement?.appName })
+  
   // 使用流式API获取进度
   if (onProgress) {
     let fullContent = ''
-    await callAIStream(messages, (chunk) => {
-      fullContent += chunk
-      onProgress(fullContent)
-    }, {
-      temperature: 0.3,  // Demo代码要求精确
-      maxTokens: 16384   // 需要更多token
-    })
-    
-    // 解析JSON
     try {
-      const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('AI返回的内容不是有效的JSON格式')
-      }
-    } catch (error) {
-      console.error('解析Demo代码失败:', error)
-      throw new Error('AI生成的代码格式有误，请重试')
+      await callAIStream(messages, (chunk) => {
+        fullContent += chunk
+        onProgress(fullContent)
+        aiLogger.updateRawContent(logId, fullContent)
+      }, {
+        temperature: 0.3,
+        maxTokens: 16384
+      })
+    } catch (streamError) {
+      aiLogger.error(logId, streamError, fullContent)
+      throw streamError
     }
+    
+    // ⭐ 增强的JSON解析（多种容错策略）
+    const parsed = robustJsonParse(fullContent, logId)
+    aiLogger.success(logId, { filesCount: parsed.files?.length })
+    return parsed
   } else {
     // 非流式调用
-    const response = await callAI(messages, {
-      temperature: 0.3,
-      maxTokens: 16384
-    })
-    
-    const jsonMatch = response.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0])
-    } else {
-      throw new Error('AI返回的内容不是有效的JSON格式')
+    let response = ''
+    try {
+      response = await callAI(messages, {
+        temperature: 0.3,
+        maxTokens: 16384
+      })
+      aiLogger.updateRawContent(logId, response)
+    } catch (callError) {
+      aiLogger.error(logId, callError, response)
+      throw callError
     }
+    
+    const parsed = robustJsonParse(response, logId)
+    aiLogger.success(logId, { filesCount: parsed.files?.length })
+    return parsed
   }
 }
 
