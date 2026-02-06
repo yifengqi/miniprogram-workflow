@@ -337,3 +337,191 @@ export async function generateDevPRD(requirement, clientPRD, options = {}) {
     maxTokens: 8192
   })
 }
+
+/**
+ * 生成Demo代码
+ * @param {Object} prdDev - 开发版PRD内容
+ * @param {Object} requirement - 需求数据
+ * @param {Function} onProgress - 进度回调
+ * @returns {Promise<Object>} Demo代码结构
+ */
+export async function generateDemoCode(prdDev, requirement, onProgress) {
+  const prompt = `你是一个资深的小程序开发专家，请根据以下PRD开发版内容，生成一个完整的小程序Demo代码。
+
+技术栈要求：
+- 框架：微信小程序原生
+- 语言：JavaScript ES6+
+- 样式：WXSS
+- 数据：微信云开发
+
+代码要求：
+1. 完整的项目结构
+2. 所有必需的页面文件（.js, .wxml, .wxss, .json）
+3. 核心业务逻辑实现
+4. 完整的云函数代码
+5. 项目配置文件（app.json, project.config.json等）
+6. README.md 使用说明
+
+请按以下JSON格式输出：
+{
+  "projectName": "项目名称",
+  "structure": {
+    "description": "项目结构说明",
+    "tree": "文件树（文本格式）"
+  },
+  "files": [
+    {
+      "path": "app.js",
+      "type": "javascript",
+      "content": "文件内容",
+      "description": "文件说明"
+    },
+    {
+      "path": "app.json",
+      "type": "json",
+      "content": "配置内容",
+      "description": "全局配置"
+    },
+    {
+      "path": "pages/index/index.js",
+      "type": "javascript",
+      "content": "页面逻辑",
+      "description": "首页逻辑"
+    }
+    // ... 更多文件
+  ],
+  "cloudFunctions": [
+    {
+      "name": "函数名",
+      "path": "cloudfunctions/xxx/index.js",
+      "content": "云函数代码",
+      "description": "功能说明"
+    }
+  ],
+  "setup": {
+    "steps": [
+      "1. 在微信开发者工具中导入项目",
+      "2. 配置云开发环境",
+      "3. ..."
+    ],
+    "notes": [
+      "注意事项1",
+      "注意事项2"
+    ]
+  }
+}
+
+---
+开发版PRD：
+${prdDev}
+
+原始需求：
+${JSON.stringify(requirement, null, 2)}
+`
+
+  const messages = [
+    {
+      role: 'system',
+      content: '你是一个资深的微信小程序开发专家，精通完整项目架构和代码实现。'
+    },
+    {
+      role: 'user',
+      content: prompt
+    }
+  ]
+  
+  // 使用流式API获取进度
+  if (onProgress) {
+    let fullContent = ''
+    await callAIStream(messages, (chunk) => {
+      fullContent += chunk
+      onProgress(fullContent)
+    }, {
+      temperature: 0.3,  // Demo代码要求精确
+      maxTokens: 16384   // 需要更多token
+    })
+    
+    // 解析JSON
+    try {
+      const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0])
+      } else {
+        throw new Error('AI返回的内容不是有效的JSON格式')
+      }
+    } catch (error) {
+      console.error('解析Demo代码失败:', error)
+      throw new Error('AI生成的代码格式有误，请重试')
+    }
+  } else {
+    // 非流式调用
+    const response = await callAI(messages, {
+      temperature: 0.3,
+      maxTokens: 16384
+    })
+    
+    const jsonMatch = response.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    } else {
+      throw new Error('AI返回的内容不是有效的JSON格式')
+    }
+  }
+}
+
+/**
+ * 生成GitHub仓库配置
+ * @param {Object} demoCode - Demo代码结构
+ * @param {Object} project - 项目信息
+ * @returns {Object} GitHub配置
+ */
+export function generateGitHubConfig(demoCode, project) {
+  return {
+    repoName: `${project.name}-miniprogram`.replace(/\s+/g, '-').toLowerCase(),
+    description: project.requirement?.background || '微信小程序项目',
+    private: true,  // 默认私有仓库
+    defaultBranch: 'main',
+    files: demoCode.files,
+    readme: generateReadme(demoCode, project)
+  }
+}
+
+/**
+ * 生成README.md
+ */
+function generateReadme(demoCode, project) {
+  return `# ${project.name}
+
+${project.requirement?.background || ''}
+
+## 项目信息
+
+- 类型：${project.requirement?.appType?.join('、') || '未知'}
+- 预算：${project.quickInfo?.budget || '待定'}
+- 期望时间：${project.quickInfo?.expectedTime || '待定'}
+
+## 项目结构
+
+\`\`\`
+${demoCode.structure?.tree || ''}
+\`\`\`
+
+## 快速开始
+
+${demoCode.setup?.steps?.map((step, i) => `${i + 1}. ${step}`).join('\n') || ''}
+
+## 注意事项
+
+${demoCode.setup?.notes?.map(note => `- ${note}`).join('\n') || ''}
+
+## 技术栈
+
+- 微信小程序原生框架
+- 微信云开发
+- JavaScript ES6+
+
+---
+
+生成时间：${new Date().toLocaleString('zh-CN')}
+`
+}

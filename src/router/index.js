@@ -26,6 +26,12 @@ const routes = [
     meta: { title: 'PRD生成' }
   },
   {
+    path: '/demo',
+    name: 'Demo',
+    component: () => import('@/views/DemoViewer.vue'),
+    meta: { title: 'Demo代码' }
+  },
+  {
     path: '/experience',
     name: 'Experience',
     component: () => import('@/views/ExperienceLibrary.vue'),

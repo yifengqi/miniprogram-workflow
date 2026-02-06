@@ -52,6 +52,11 @@
             <span>PRD生成</span>
           </el-menu-item>
           
+          <el-menu-item index="/demo">
+            <el-icon><Files /></el-icon>
+            <span>Demo代码</span>
+          </el-menu-item>
+          
           <el-menu-item index="/experience">
             <el-icon><Collection /></el-icon>
             <span>经验知识库</span>

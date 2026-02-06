@@ -108,6 +108,26 @@
           </div>
         </div>
         
+        <!-- ⭐ 确认PRD并生成Demo按钮 -->
+        <div v-if="projectStore.currentProject.prdClient && projectStore.currentProject.prdDev" class="card next-step-card">
+          <div class="next-step-content">
+            <div class="step-icon">🚀</div>
+            <div class="step-info">
+              <h3>PRD已完成</h3>
+              <p>客户版和开发版PRD均已生成，可以开始自动生成Demo代码了</p>
+            </div>
+            <el-button 
+              type="primary" 
+              size="large"
+              :loading="generatingDemo"
+              @click="confirmAndGenerateDemo"
+            >
+              <el-icon v-if="!generatingDemo"><Plus /></el-icon>
+              {{ generatingDemo ? '正在生成Demo...' : '确认PRD并生成Demo' }}
+            </el-button>
+          </div>
+        </div>
+        
         <!-- 生成进度 -->
         <div v-if="generating" class="card generating-card">
           <el-icon class="loading-icon"><Loading /></el-icon>
@@ -199,15 +219,17 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
-import { View, EditPen, Loading } from '@element-plus/icons-vue'
+import { View, EditPen, Loading, Plus } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { useSettingsStore } from '@/stores/settings'
 import { useExperienceStore } from '@/stores/experience'  // ⭐ 新增
 import { callAI, PRD_PROMPTS } from '@/api/ai'
 import { aiQueue } from '@/utils/aiQueue'  // ⭐ 新增
 
+const router = useRouter()
 const projectStore = useProjectStore()
 const settingsStore = useSettingsStore()
 const experienceStore = useExperienceStore()  // ⭐ 新增
@@ -218,6 +240,7 @@ const generating = ref(false)
 const generatingType = ref('')
 const generatingClient = ref(false)
 const generatingDev = ref(false)
+const generatingDemo = ref(false)  // ⭐ 新增
 
 // ⭐ 自动化状态
 const isAutoGenerating = ref(false)
@@ -397,6 +420,33 @@ function downloadContent(type) {
   URL.revokeObjectURL(url)
   
   ElMessage.success('文件已下载')
+}
+
+// ⭐ 确认PRD并生成Demo
+async function confirmAndGenerateDemo() {
+  try {
+    generatingDemo.value = true
+    
+    ElMessage({
+      message: '🚀 开始生成Demo代码，这可能需要3-5分钟...',
+      type: 'info',
+      duration: 3000
+    })
+    
+    // 将任务添加到AI队列
+    aiQueue.addTask(projectStore.currentProject.id, 'generate_demo', 'high', {
+      autoGithub: true  // 自动推送到GitHub
+    })
+    
+    // 跳转到Demo页面
+    setTimeout(() => {
+      router.push('/demo')
+    }, 1000)
+    
+  } catch (error) {
+    ElMessage.error('启动Demo生成失败: ' + (error.message || '未知错误'))
+    generatingDemo.value = false
+  }
 }
 
 // ⭐ 检测自动化进度
@@ -668,5 +718,43 @@ onUnmounted(() => {
   padding: 20px;
   background: var(--bg-tertiary);
   border-radius: 8px;
+}
+
+/* ⭐ 下一步卡片样式 */
+.next-step-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+}
+
+.next-step-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.step-icon {
+  font-size: 48px;
+  flex-shrink: 0;
+}
+
+.step-info {
+  flex: 1;
+}
+
+.step-info h3 {
+  margin: 0 0 8px 0;
+  color: white;
+  font-size: 20px;
+}
+
+.step-info p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+}
+
+.next-step-content .el-button {
+  flex-shrink: 0;
 }
 </style>

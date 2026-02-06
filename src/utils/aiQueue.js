@@ -1,9 +1,10 @@
 import { ElMessage, ElNotification } from 'element-plus'
-import { callAI, generateClientPRD, generateDevPRD } from '@/api/ai'
+import { callAI, generateClientPRD, generateDevPRD, generateDemoCode, generateGitHubConfig } from '@/api/ai'
 import { useProjectStore } from '@/stores/project'
 import { useRequirementPoolStore } from '@/stores/requirementPool'
 import { useExperienceStore } from '@/stores/experience'
-import { aiNotification } from './aiNotification'  // ⭐ 新增
+import { aiNotification } from './aiNotification'
+import { githubService } from './github'  // ⭐ 新增
 
 /**
  * AI任务队列
@@ -249,35 +250,118 @@ class AITaskQueue {
    */
   async taskGenerateDemo(project, task) {
     const projectStore = useProjectStore()
+    const experienceStore = useExperienceStore()
     
-    ElNotification({
-      title: '开始生成Demo',
-      message: `正在根据PRD生成代码...预计需要3-5分钟`,
-      type: 'info'
-    })
+    // ⭐ 通知开始
+    aiNotification.taskStart(
+      task.id,
+      '🤖 开始生成Demo代码',
+      `正在根据PRD生成「${project.name}」的完整代码...预计需要3-5分钟`
+    )
     
-    // TODO: 实现Demo代码生成
-    // const demoCode = await generateDemoCode(project.prdDev)
-    
-    // 暂时模拟
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    const demoCode = {
-      files: [],
-      structure: '项目结构',
-      readme: 'Demo说明'
+    try {
+      // 🔴 生成Demo代码（带进度回调）
+      const demoCode = await generateDemoCode(
+        project.prdDev,
+        project.requirement,
+        (progress) => {
+          // 更新进度通知
+          const percentage = Math.min(90, Math.floor(progress.length / 100))
+          aiNotification.taskProgress(
+            task.id,
+            `AI正在生成代码文件...`,
+            percentage
+          )
+        }
+      )
+      
+      // 保存Demo代码
+      projectStore.updateProject(project.id, {
+        demoCode,
+        stage: 'demo_generated'
+      })
+      
+      // 记录阶段
+      experienceStore.logProjectStage(project.id, 'demo_generated', {
+        filesCount: demoCode.files?.length || 0,
+        cloudFunctions: demoCode.cloudFunctions?.length || 0
+      })
+      
+      // 🔴 如果配置了GitHub，自动推送
+      if (githubService.isConfigured() && task.options.autoGithub !== false) {
+        aiNotification.taskProgress(
+          task.id,
+          '正在推送到GitHub...',
+          95
+        )
+        
+        await this.pushToGitHub(project, demoCode)
+        
+        aiNotification.taskComplete(
+          task.id,
+          '🎉 Demo生成并推送完成',
+          `代码已生成并推送到GitHub，共${demoCode.files?.length || 0}个文件`
+        )
+      } else {
+        aiNotification.taskComplete(
+          task.id,
+          '✅ Demo代码生成完成',
+          `已生成${demoCode.files?.length || 0}个文件，请查看或下载`
+        )
+      }
+      
+    } catch (error) {
+      console.error('Demo生成失败:', error)
+      aiNotification.taskError(
+        task.id,
+        '❌ Demo生成失败',
+        error.message
+      )
+      throw error
     }
-    
-    projectStore.updateProject(project.id, {
-      demoCode,
-      stage: 'demo_ready'
-    })
-    
-    ElNotification({
-      title: 'Demo生成完成',
-      message: `代码已生成，请查看确认`,
-      type: 'success'
-    })
+  }
+  
+  /**
+   * 推送到GitHub
+   */
+  async pushToGitHub(project, demoCode) {
+    try {
+      // 1. 生成GitHub配置
+      const githubConfig = generateGitHubConfig(demoCode, project)
+      
+      // 2. 获取用户信息
+      const user = await githubService.getUserInfo()
+      
+      // 3. 创建仓库
+      const repo = await githubService.createRepository(githubConfig)
+      
+      // 4. 推送文件
+      await githubService.pushFiles(
+        user.login,
+        repo.name,
+        demoCode.files,
+        (progress) => {
+          console.log(`📤 推送进度: ${progress.percentage}% (${progress.completed}/${progress.total})`)
+        }
+      )
+      
+      // 5. 保存仓库信息
+      const projectStore = useProjectStore()
+      projectStore.updateProject(project.id, {
+        githubRepo: {
+          url: repo.html_url,
+          name: repo.name,
+          owner: user.login,
+          createdAt: new Date().toISOString()
+        }
+      })
+      
+      return repo
+      
+    } catch (error) {
+      console.error('GitHub推送失败:', error)
+      throw error
+    }
   }
   
   /**
