@@ -432,12 +432,6 @@
         <div class="preview-content markdown-preview" v-html="previewHtml"></div>
       </div>
     </template>
-    
-    <!-- 未选择项目 -->
-    <div v-else class="empty-state">
-      <el-icon><FolderOpened /></el-icon>
-      <p>请先在首页创建或选择一个项目</p>
-      <el-button type="primary" @click="$router.push('/')">去首页</el-button>
     </div>
     
     <!-- 二维码弹窗 -->
