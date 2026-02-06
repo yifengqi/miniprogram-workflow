@@ -69,7 +69,26 @@
         </div>
         
         <div class="project-card__content">
-          <div class="project-card__status">
+          <!-- ⭐ 三阶段进度 -->
+          <div v-if="project.phases" class="project-card__phases">
+            <div 
+              v-for="p in 3" :key="p"
+              class="phase-dot-mini"
+              :class="{
+                completed: project.phases[p]?.status === 'completed',
+                active: project.currentPhase === p && project.phases[p]?.status !== 'completed',
+                locked: project.phases[p]?.status === 'locked'
+              }"
+              :title="`Phase ${p}: ${phaseLabels[p]}`"
+            >
+              {{ p }}
+            </div>
+            <span class="phase-current-text">
+              Phase {{ project.currentPhase || 1 }} · {{ phaseLabels[project.currentPhase || 1] }}
+            </span>
+          </div>
+          <!-- 旧项目兼容 -->
+          <div v-else class="project-card__status">
             <div class="status-item">
               <el-icon :class="{ done: project.requirement }"><Document /></el-icon>
               <span>需求</span>
@@ -109,46 +128,38 @@
     <!-- 工作流程说明 -->
     <div class="workflow-guide card">
       <div class="card-header">
-        <h3 class="card-title">标准化开发流程</h3>
+        <h3 class="card-title">三阶段开发流程</h3>
       </div>
       <div class="workflow-steps">
         <div class="workflow-step">
           <div class="step-number">1</div>
           <div class="step-content">
-            <h4>分享表单</h4>
-            <p>发送需求表单给客户</p>
+            <h4>需求收集</h4>
+            <p>表单 → 需求池 → 立项</p>
           </div>
         </div>
         <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
         <div class="workflow-step">
-          <div class="step-number">2</div>
+          <div class="step-number" style="background: #f56c6c; color: white;">🦴</div>
           <div class="step-content">
-            <h4>进入需求池</h4>
-            <p>客户提交后自动进入</p>
+            <h4>Phase 1 骨架</h4>
+            <p>核心功能 → Demo → 测试</p>
           </div>
         </div>
         <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
         <div class="workflow-step">
-          <div class="step-number">3</div>
+          <div class="step-number" style="background: #e6a23c; color: white;">🫀</div>
           <div class="step-content">
-            <h4>评估立项</h4>
-            <p>选择需求创建项目</p>
+            <h4>Phase 2 血肉</h4>
+            <p>完整功能 → Demo → 测试</p>
           </div>
         </div>
         <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
         <div class="workflow-step">
-          <div class="step-number">4</div>
+          <div class="step-number" style="background: #67c23a; color: white;">👔</div>
           <div class="step-content">
-            <h4>生成PRD</h4>
-            <p>AI生成项目文档</p>
-          </div>
-        </div>
-        <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
-        <div class="workflow-step">
-          <div class="step-number">5</div>
-          <div class="step-content">
-            <h4>开发上线</h4>
-            <p>参考PRD和检查清单</p>
+            <h4>Phase 3 衣服</h4>
+            <p>拓展功能 → Demo → 上线</p>
           </div>
         </div>
       </div>
@@ -219,6 +230,8 @@ import { useRequirementPoolStore } from '@/stores/requirementPool'  // ⭐ 新�
 const router = useRouter()
 const projectStore = useProjectStore()
 const poolStore = useRequirementPoolStore()  // ⭐ 新增
+
+const phaseLabels = { 1: '骨架', 2: '血肉', 3: '衣服' }
 
 const showRenameDialog = ref(false)
 const renameValue = ref('')
@@ -496,6 +509,51 @@ function renameProject() {
 
 .status-item .el-icon.done {
   color: var(--success-color);
+}
+
+/* 三阶段迷你进度 */
+.project-card__phases {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.phase-dot-mini {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 2px solid var(--border-color);
+}
+
+.phase-dot-mini.completed {
+  background: #67c23a;
+  color: white;
+  border-color: #67c23a;
+}
+
+.phase-dot-mini.active {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.phase-dot-mini.locked {
+  opacity: 0.4;
+}
+
+.phase-current-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 4px;
 }
 
 .project-card__footer {

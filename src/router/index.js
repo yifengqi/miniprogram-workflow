@@ -32,6 +32,12 @@ const routes = [
     meta: { title: 'Demo代码' }
   },
   {
+    path: '/iteration',
+    name: 'Iteration',
+    component: () => import('@/views/IterationManager.vue'),
+    meta: { title: '迭代管理' }
+  },
+  {
     path: '/experience',
     name: 'Experience',
     component: () => import('@/views/ExperienceLibrary.vue'),

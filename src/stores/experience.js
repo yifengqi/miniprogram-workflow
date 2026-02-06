@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { callAI } from '@/api/ai'
+import { useProjectStore } from './project'
 
 export const useExperienceStore = defineStore('experience', {
   state: () => ({
@@ -165,13 +166,50 @@ export const useExperienceStore = defineStore('experience', {
           enabled: true,
           createdAt: new Date().toISOString(),
           hitCount: 0
+        },
+        // 🔴 高优先级安全规则 - 来自实战经验
+        {
+          id: 'rule-security-payment',
+          source: '实战经验 #H001',
+          projectName: '积分/支付安全',
+          trigger: { keywords: ['积分', '支付', '付款', '充值', '优惠券', '折扣', '满减', '红包', '打赏', '虚拟货币', '会员', '钱包', '余额'] },
+          action: '🔴【必读安全警告】检测到积分/支付相关功能！务必做到"三重审核"：①前端仅展示不计算 ②后端独立计算金额和积分（绝不信任前端传值）③后端完整日志记录（谁、何时、做了什么）。防止0元购买、积分刷取等安全漏洞。详见标准化流程/06_非功能性检查清单.md第十章。',
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          hitCount: 0,
+          priority: 5,
+          mustRead: true
+        },
+        {
+          id: 'rule-security-concurrency',
+          source: '实战经验 #H002',
+          projectName: '高并发/安全防范',
+          trigger: { keywords: ['秒杀', '抢购', '高并发', '并发', '限时', '限量', '库存', '竞拍', '拼团'] },
+          action: '🔴【必读安全警告】检测到高并发场景！务必做到：①库存扣减使用数据库事务+乐观锁 ②接口频率限制（Rate Limiting）③防重放攻击（请求签名+时间戳）④队列削峰。设计系统时假设每个用户都是黑客！详见标准化流程/06_非功能性检查清单.md第十章。',
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          hitCount: 0,
+          priority: 5,
+          mustRead: true
+        },
+        {
+          id: 'rule-security-api',
+          source: '实战经验 #H002',
+          projectName: 'API安全',
+          trigger: { keywords: ['接口', 'API', '登录', '注册', '验证码', '短信'] },
+          action: '⚠️【安全提醒】涉及接口安全：①所有敏感接口需要登录态鉴权 ②参数严格校验（类型、范围、长度）③防SQL注入（参数化查询）④防XSS（输出转义）⑤关键操作添加验证码。',
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          hitCount: 0,
+          priority: 4,
+          mustRead: false
         }
       ]
       
       this.intelligentRules = defaultRules
       this.saveToStorage()
       
-      console.log('💡 已初始化默认智能提示规则')
+      console.log('💡 已初始化默认智能提示规则（含安全规则）')
     },
     
     // 保存到存储
@@ -692,6 +730,3 @@ ${JSON.stringify(projectData, null, 2)}
     }
   }
 })
-
-// 需要导入 projectStore
-import { useProjectStore } from './project'

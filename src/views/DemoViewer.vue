@@ -8,11 +8,25 @@
     </div>
     
     <template v-if="projectStore.currentProject">
+      <!-- ⭐ 阶段选择器 -->
+      <div v-if="projectStore.currentProject.phases" class="card phase-selector-card">
+        <span class="selector-label">查看阶段：</span>
+        <el-radio-group v-model="viewPhase" size="small">
+          <el-radio-button 
+            v-for="p in 3" :key="p" :value="p"
+            :disabled="!getPhaseDemo(p)"
+          >
+            {{ phaseLabels[p] }}
+            <el-tag v-if="getPhaseDemo(p)" type="success" size="small" style="margin-left:4px;">✓</el-tag>
+          </el-radio-button>
+        </el-radio-group>
+      </div>
+      
       <!-- Demo未生成 -->
-      <div v-if="!projectStore.currentProject.demoCode" class="card warning-card">
+      <div v-if="!activeDemoCode" class="card warning-card">
         <el-icon><InfoFilled /></el-icon>
         <div>
-          <h4>尚未生成Demo代码</h4>
+          <h4>{{ phaseLabels[viewPhase] }} 尚未生成Demo代码</h4>
           <p>请先完成PRD生成，然后点击"生成Demo"</p>
         </div>
         <el-button type="primary" @click="$router.push('/prd')">
@@ -104,6 +118,15 @@
             >
               <el-icon><Reading /></el-icon>
               查看使用说明
+            </el-button>
+            
+            <el-button 
+              type="warning"
+              size="large"
+              @click="goToIteration"
+            >
+              <el-icon><ChatDotRound /></el-icon>
+              提交反馈/迭代
             </el-button>
           </div>
         </div>
@@ -203,16 +226,18 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElNotification } from 'element-plus'
 import { 
   InfoFilled, Loading, Link, Download, Upload, Reading, 
-  Search, Document, CopyDocument, FolderOpened 
+  Search, Document, CopyDocument, FolderOpened, ChatDotRound
 } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { aiQueue } from '@/utils/aiQueue'
 import { githubService } from '@/utils/github'
 import JSZip from 'jszip'
 
+const router = useRouter()
 const projectStore = useProjectStore()
 
 const generatingDemo = ref(false)
@@ -222,8 +247,27 @@ const setupDialogVisible = ref(false)
 const fileSearchText = ref('')
 const activeFiles = ref([])
 
-// 计算属性
-const demoCode = computed(() => projectStore.currentProject?.demoCode || {})
+// ⭐ 阶段相关
+const viewPhase = ref(projectStore.currentProject?.currentPhase || 1)
+const phaseLabels = { 1: 'Phase 1 骨架', 2: 'Phase 2 血肉', 3: 'Phase 3 衣服' }
+
+function getPhaseDemo(p) {
+  return projectStore.currentProject?.phases?.[p]?.demoCode
+}
+
+// 计算属性（阶段感知）
+const activeDemoCode = computed(() => {
+  const project = projectStore.currentProject
+  if (!project) return null
+  // 如果有phases结构，从阶段中取
+  if (project.phases?.[viewPhase.value]?.demoCode) {
+    return project.phases[viewPhase.value].demoCode
+  }
+  // 兼容旧数据
+  return project.demoCode
+})
+
+const demoCode = computed(() => activeDemoCode.value || {})
 
 const filteredFiles = computed(() => {
   if (!demoCode.value.files) return []
@@ -363,6 +407,11 @@ function downloadFile(file) {
   URL.revokeObjectURL(url)
   
   ElMessage.success('文件已下载')
+}
+
+// 跳转到迭代管理
+function goToIteration() {
+  router.push('/iteration')
 }
 </script>
 

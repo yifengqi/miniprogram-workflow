@@ -57,6 +57,11 @@
             <span>Demo代码</span>
           </el-menu-item>
           
+          <el-menu-item index="/iteration">
+            <el-icon><Operation /></el-icon>
+            <span>迭代管理</span>
+          </el-menu-item>
+          
           <el-menu-item index="/experience">
             <el-icon><Collection /></el-icon>
             <span>经验知识库</span>
@@ -103,10 +108,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRequirementPoolStore } from '@/stores/requirementPool'  // ⭐ 新增
 import { useExperienceStore } from '@/stores/experience'  // ⭐ 新增
+import { useIterationStore } from '@/stores/iteration'  // ⭐ Phase 3
 
 const route = useRoute()
 const poolStore = useRequirementPoolStore()  // ⭐ 新增
 const experienceStore = useExperienceStore()  // ⭐ 新增
+const iterationStore = useIterationStore()  // ⭐ Phase 3
 const isCollapse = ref(false)
 
 const currentRoute = computed(() => route.path)
@@ -116,10 +123,12 @@ const isPublicPage = computed(() => route.meta?.public === true)
 onMounted(() => {
   poolStore.loadFromStorage()
   experienceStore.loadFromStorage()  // ⭐ 新增
+  iterationStore.loadFromStorage()  // ⭐ Phase 3
   
   console.log('📚 系统初始化完成')
   console.log('  - 需求池:', poolStore.pendingCount, '个待评估')
   console.log('  - 经验库:', experienceStore.stats.totalExperiences, '条经验')
+  console.log('  - 迭代记录:', Object.keys(iterationStore.iterations).length, '个项目')
 })
 </script>
 

@@ -35,27 +35,59 @@ export const useProjectStore = defineStore('project', () => {
     return project
   }
   
-  // ⭐ 新增：从需求池创建项目（推荐使用）
+  // 三阶段模板
+  const PHASE_NAMES = { 1: '骨架', 2: '血肉', 3: '衣服' }
+  const PHASE_DESC = {
+    1: 'P0核心功能，最小可行产品',
+    2: 'P0+P1完整功能，完善体验',
+    3: 'P2拓展功能，中长期规划'
+  }
+  
+  function createEmptyPhase(num) {
+    return {
+      name: PHASE_NAMES[num],
+      description: PHASE_DESC[num],
+      status: num === 1 ? 'pending' : 'locked',
+      prdClient: null,
+      prdDev: null,
+      demoCode: null,
+      testResult: null,
+      startedAt: null,
+      completedAt: null
+    }
+  }
+
+  // ⭐ 从需求池创建项目（三阶段结构）
   function createProjectFromRequirement(requirement) {
     const project = {
       id: `project-${Date.now()}`,
       name: requirement.data.appName || '未命名项目',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      requirementId: requirement.id,  // 关联需求ID
-      requirement: requirement.data,  // 完整需求数据
+      requirementId: requirement.id,
+      requirement: requirement.data,
+      
+      // ⭐ 三阶段结构：造骨架 → 生血肉 → 搭衣服
+      currentPhase: 1,
+      phases: {
+        1: createEmptyPhase(1),
+        2: createEmptyPhase(2),
+        3: createEmptyPhase(3)
+      },
+      
+      // 兼容旧字段（指向当前阶段数据的快捷访问）
       prdClient: null,
       prdDev: null,
-      demoCode: null,  // ⭐ 新增：Demo代码
-      iterations: [],  // ⭐ 新增：迭代记录
+      demoCode: null,
+      
+      iterations: [],
       checklistProgress: {},
       status: 'requirement',
-      stage: 'requirement',  // ⭐ 新增：当前阶段
-      autoMode: true,  // ⭐ 新增：是否自动化模式
+      stage: 'phase1_prd',
+      autoMode: true,
       
-      // 快速信息
       quickInfo: {
-        contact: requirement.quickInfo.contact,
+        contact: requirement.quickInfo?.contact,
         budget: requirement.data.budget,
         expectedTime: requirement.data.expectedTime
       }
@@ -63,13 +95,115 @@ export const useProjectStore = defineStore('project', () => {
     projects.value.unshift(project)
     currentProjectId.value = project.id
     
-    // ⭐ 记录项目创建
     experienceStore.logProjectStage(project.id, 'created', {
       source: 'requirement_pool',
       requirementId: requirement.id
     })
     
     return project
+  }
+  
+  // ⭐ 保存阶段PRD
+  function savePhasePRD(type, content, phaseNum) {
+    if (!currentProjectId.value) return
+    const project = currentProject.value
+    if (!project) return
+    
+    const phase = phaseNum || project.currentPhase
+    const key = type === 'client' ? 'prdClient' : 'prdDev'
+    
+    // 更新阶段内数据
+    if (project.phases && project.phases[phase]) {
+      project.phases[phase][key] = content
+      
+      // 更新阶段状态
+      if (type === 'dev' && project.phases[phase].prdClient) {
+        project.phases[phase].status = 'prd_ready'
+      }
+    }
+    
+    // 同步到顶层（兼容旧逻辑）
+    updateProject(currentProjectId.value, {
+      [key]: content,
+      phases: project.phases,
+      stage: type === 'dev' ? `phase${phase}_prd_ready` : project.stage
+    })
+    
+    experienceStore.logProjectStage(currentProjectId.value, `phase${phase}_prd_${type}_generated`, {
+      phase, contentLength: content?.length || 0
+    })
+  }
+  
+  // ⭐ 保存阶段Demo
+  function savePhaseDemoCode(demoCode, phaseNum) {
+    if (!currentProjectId.value) return
+    const project = currentProject.value
+    if (!project) return
+    
+    const phase = phaseNum || project.currentPhase
+    
+    if (project.phases && project.phases[phase]) {
+      project.phases[phase].demoCode = demoCode
+      project.phases[phase].status = 'demo_ready'
+    }
+    
+    updateProject(currentProjectId.value, {
+      demoCode,
+      phases: project.phases,
+      stage: `phase${phase}_demo_ready`
+    })
+    
+    experienceStore.logProjectStage(currentProjectId.value, `phase${phase}_demo_generated`, { phase })
+  }
+  
+  // ⭐ 确认阶段通过，进入下一阶段
+  function completePhase(phaseNum) {
+    if (!currentProjectId.value) return
+    const project = currentProject.value
+    if (!project || !project.phases) return
+    
+    const phase = phaseNum || project.currentPhase
+    
+    // 标记当前阶段完成
+    project.phases[phase].status = 'completed'
+    project.phases[phase].completedAt = new Date().toISOString()
+    project.phases[phase].testResult = '通过'
+    
+    // 解锁下一阶段
+    const nextPhase = phase + 1
+    if (nextPhase <= 3 && project.phases[nextPhase]) {
+      project.phases[nextPhase].status = 'pending'
+      project.phases[nextPhase].startedAt = new Date().toISOString()
+      project.currentPhase = nextPhase
+      
+      updateProject(currentProjectId.value, {
+        currentPhase: nextPhase,
+        phases: project.phases,
+        stage: `phase${nextPhase}_prd`
+      })
+    } else {
+      // 三阶段全部完成
+      updateProject(currentProjectId.value, {
+        phases: project.phases,
+        stage: 'all_phases_completed',
+        status: 'completed'
+      })
+    }
+    
+    experienceStore.logProjectStage(currentProjectId.value, `phase${phase}_completed`, { phase })
+    
+    return nextPhase <= 3 ? nextPhase : null
+  }
+  
+  // ⭐ 获取当前阶段信息
+  function getCurrentPhase(projectId) {
+    const project = projectId ? getProjectById(projectId) : currentProject.value
+    if (!project || !project.phases) return null
+    return {
+      num: project.currentPhase || 1,
+      data: project.phases[project.currentPhase || 1],
+      name: PHASE_NAMES[project.currentPhase || 1]
+    }
   }
   
   // ⭐ 新增：设置当前项目
@@ -114,18 +248,23 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
   
-  // 保存 PRD
+  // 保存 PRD（兼容旧调用，自动路由到阶段版本）
   function savePRD(type, content) {
-    if (currentProjectId.value) {
+    if (!currentProjectId.value) return
+    const project = currentProject.value
+    
+    // 如果项目有phases结构，使用阶段版本
+    if (project?.phases) {
+      savePhasePRD(type, content)
+    } else {
+      // 旧项目兼容
       const key = type === 'client' ? 'prdClient' : 'prdDev'
       updateProject(currentProjectId.value, { [key]: content })
       
-      // ⭐ 记录PRD生成
       experienceStore.logProjectStage(currentProjectId.value, `prd_${type}_generated`, {
         contentLength: content?.length || 0
       })
       
-      // ⭐ 更新项目阶段
       if (type === 'dev') {
         updateProject(currentProjectId.value, { 
           stage: 'prd_ready',
@@ -203,19 +342,25 @@ export const useProjectStore = defineStore('project', () => {
     projects,
     currentProjectId,
     currentProject,
+    PHASE_NAMES,
+    PHASE_DESC,
     createProject,
-    createProjectFromRequirement,  // ⭐ 新增
-    setCurrentProject,  // ⭐ 新增
-    getProjectById,  // ⭐ 新增
+    createProjectFromRequirement,
+    setCurrentProject,
+    getProjectById,
     updateProject,
-    updateStage,  // ⭐ 新增
+    updateStage,
     deleteProject,
     selectProject,
     saveRequirement,
     savePRD,
+    savePhasePRD,
+    savePhaseDemoCode,
+    completePhase,
+    getCurrentPhase,
     saveChecklistProgress,
-    recordIssue,  // ⭐ 新增
-    completeProject,  // ⭐ 新增
+    recordIssue,
+    completeProject,
     exportAllData,
     importData,
     clearAllData

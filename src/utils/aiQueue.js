@@ -152,180 +152,163 @@ class AITaskQueue {
   }
   
   /**
-   * 生成客户版PRD
+   * 获取当前阶段的PRD前置数据
+   */
+  getPhasePrevPRDs(project, phase) {
+    const prevPRDs = {}
+    if (phase >= 2 && project.phases?.[1]) {
+      prevPRDs.phase1 = project.phases[1].prdClient || ''
+    }
+    if (phase >= 3 && project.phases?.[2]) {
+      prevPRDs.phase2 = project.phases[2].prdClient || ''
+    }
+    return prevPRDs
+  }
+
+  /**
+   * 生成客户版PRD（阶段感知）
    */
   async taskGenerateClientPRD(project, task) {
     const projectStore = useProjectStore()
     const experienceStore = useExperienceStore()
     
-    // ⭐ 通知开始
+    const phase = task.options.phase || project.currentPhase || 1
+    const phaseNames = { 1: '骨架', 2: '血肉', 3: '衣服' }
+    
     aiNotification.taskStart(
       task.id,
-      '🤖 开始生成客户版PRD',
-      `正在为「${project.name}」生成客户版PRD...`
+      `🦴 Phase ${phase} - 生成客户版PRD`,
+      `正在为「${project.name}」生成 ${phaseNames[phase]}阶段 客户版PRD...`
     )
     
-    // 🔴 优化：使用标签索引快速查找相关经验
+    // 使用标签索引快速查找相关经验
     const projectType = project.requirement?.appType
-    const tags = [
-      `type:${projectType}`,
-      'stage:prd_generation'
-    ]
+    const tags = [`type:${projectType}`, 'stage:prd_generation']
     
-    // 三层筛选：标签定位 → 重要性 → 相关度
     const relevantExp = experienceStore.getRelevantExperiences({
-      tags,
-      projectType,
-      stage: 'prd_generation'
+      tags, projectType, stage: 'prd_generation'
     })
     
-    console.log(`📊 经验查询优化：`)
-    console.log(`  - 使用标签: ${tags.join(', ')}`)
-    console.log(`  - 找到经验: ${relevantExp.length}条`)
-    console.log(`  - 必读经验: ${relevantExp.filter(e => e.mustRead).length}条`)
-    console.log(`  - 实际使用: ${Math.min(relevantExp.length, 3)}条（Top 3）`)
+    console.log(`📊 Phase ${phase} 经验查询: ${relevantExp.length}条, 必读: ${relevantExp.filter(e => e.mustRead).length}条`)
     
-    // ⭐ 通知应用经验
     if (relevantExp.length > 0) {
+      aiNotification.experienceApplied(relevantExp.length, relevantExp.slice(0, 3))
       const mustReadCount = relevantExp.filter(e => e.mustRead).length
-      aiNotification.experienceApplied(
-        relevantExp.length,
-        relevantExp.slice(0, 3)
-      )
-      
       if (mustReadCount > 0) {
-        ElNotification({
-          title: '⚠️ 重要提示',
-          message: `发现 ${mustReadCount} 条必读经验，AI将特别注意！`,
-          type: 'warning',
-          duration: 5000
-        })
+        ElNotification({ title: '⚠️ 重要提示', message: `发现 ${mustReadCount} 条必读经验`, type: 'warning', duration: 5000 })
       }
     }
     
-    // 生成PRD（只传递前3条）
+    // ⭐ 带阶段参数调用AI
     const prdContent = await generateClientPRD(project.requirement, {
-      experiences: relevantExp.slice(0, 3)  // ⭐ 只用前3条
+      phase,
+      experiences: relevantExp.slice(0, 3),
+      prevPRDs: this.getPhasePrevPRDs(project, phase)
     })
     
-    // 保存
-    projectStore.savePRD('client', prdContent)
+    // 保存到阶段
+    projectStore.selectProject(project.id)
+    projectStore.savePhasePRD('client', prdContent, phase)
     
-    // ⭐ 通知完成
     aiNotification.taskComplete(
       task.id,
-      '✅ 客户版PRD生成完成',
-      '即将自动生成开发版PRD...'
+      `✅ Phase ${phase} 客户版PRD完成`,
+      `${phaseNames[phase]}阶段 客户版PRD已生成，即将生成开发版...`
     )
     
-    // 🔴 自动触发下一步：生成开发版PRD
+    // 自动触发开发版PRD
     if (project.autoMode !== false) {
-      this.addTask(project.id, 'generate_prd_dev', 'high')
+      this.addTask(project.id, 'generate_prd_dev', 'high', { phase })
     }
   }
   
   /**
-   * 生成开发版PRD
+   * 生成开发版PRD（阶段感知）
    */
   async taskGenerateDevPRD(project, task) {
     const projectStore = useProjectStore()
     
-    // ⭐ 通知开始
+    const phase = task.options.phase || project.currentPhase || 1
+    const phaseNames = { 1: '骨架', 2: '血肉', 3: '衣服' }
+    
+    const clientPRD = project.phases?.[phase]?.prdClient || project.prdClient
+    
     aiNotification.taskStart(
       task.id,
-      '🤖 开始生成开发版PRD',
-      `正在为「${project.name}」生成开发版PRD...`
+      `🦴 Phase ${phase} - 生成开发版PRD`,
+      `正在为「${project.name}」生成 ${phaseNames[phase]}阶段 开发版PRD...`
     )
     
-    // 生成PRD
     const prdContent = await generateDevPRD(
       project.requirement,
-      project.prdClient
+      clientPRD,
+      {
+        phase,
+        prevPRDs: this.getPhasePrevPRDs(project, phase)
+      }
     )
     
-    // 保存
-    projectStore.savePRD('dev', prdContent)
+    projectStore.selectProject(project.id)
+    projectStore.savePhasePRD('dev', prdContent, phase)
     
-    // ⭐ 通知完成
     aiNotification.taskComplete(
       task.id,
-      '🎉 PRD生成完成',
-      '客户版和开发版PRD都已生成，请查看确认'
+      `🎉 Phase ${phase} PRD全部完成`,
+      `${phaseNames[phase]}阶段 客户版+开发版PRD已生成，可确认后生成Demo`
     )
   }
   
   /**
-   * 生成Demo代码
+   * 生成Demo代码（阶段感知）
    */
   async taskGenerateDemo(project, task) {
     const projectStore = useProjectStore()
     const experienceStore = useExperienceStore()
     
-    // ⭐ 通知开始
+    const phase = task.options.phase || project.currentPhase || 1
+    const phaseNames = { 1: '骨架', 2: '血肉', 3: '衣服' }
+    
+    // 获取当前阶段的开发PRD
+    const prdDev = project.phases?.[phase]?.prdDev || project.prdDev
+    
     aiNotification.taskStart(
       task.id,
-      '🤖 开始生成Demo代码',
-      `正在根据PRD生成「${project.name}」的完整代码...预计需要3-5分钟`
+      `🤖 Phase ${phase} - 生成Demo`,
+      `正在根据 ${phaseNames[phase]}阶段 PRD生成代码...预计3-5分钟`
     )
     
     try {
-      // 🔴 生成Demo代码（带进度回调）
       const demoCode = await generateDemoCode(
-        project.prdDev,
+        prdDev,
         project.requirement,
         (progress) => {
-          // 更新进度通知
           const percentage = Math.min(90, Math.floor(progress.length / 100))
-          aiNotification.taskProgress(
-            task.id,
-            `AI正在生成代码文件...`,
-            percentage
-          )
+          aiNotification.taskProgress(task.id, `Phase ${phase} 生成中...`, percentage)
         }
       )
       
-      // 保存Demo代码
-      projectStore.updateProject(project.id, {
-        demoCode,
-        stage: 'demo_generated'
-      })
+      // 保存到阶段
+      projectStore.selectProject(project.id)
+      projectStore.savePhaseDemoCode(demoCode, phase)
       
-      // 记录阶段
-      experienceStore.logProjectStage(project.id, 'demo_generated', {
+      experienceStore.logProjectStage(project.id, `phase${phase}_demo_generated`, {
+        phase,
         filesCount: demoCode.files?.length || 0,
         cloudFunctions: demoCode.cloudFunctions?.length || 0
       })
       
-      // 🔴 如果配置了GitHub，自动推送
+      // GitHub推送
       if (githubService.isConfigured() && task.options.autoGithub !== false) {
-        aiNotification.taskProgress(
-          task.id,
-          '正在推送到GitHub...',
-          95
-        )
-        
+        aiNotification.taskProgress(task.id, '正在推送到GitHub...', 95)
         await this.pushToGitHub(project, demoCode)
-        
-        aiNotification.taskComplete(
-          task.id,
-          '🎉 Demo生成并推送完成',
-          `代码已生成并推送到GitHub，共${demoCode.files?.length || 0}个文件`
-        )
+        aiNotification.taskComplete(task.id, `🎉 Phase ${phase} Demo完成`, `${phaseNames[phase]}代码已生成并推送，共${demoCode.files?.length || 0}个文件`)
       } else {
-        aiNotification.taskComplete(
-          task.id,
-          '✅ Demo代码生成完成',
-          `已生成${demoCode.files?.length || 0}个文件，请查看或下载`
-        )
+        aiNotification.taskComplete(task.id, `✅ Phase ${phase} Demo完成`, `已生成${demoCode.files?.length || 0}个文件，请测试验证`)
       }
       
     } catch (error) {
       console.error('Demo生成失败:', error)
-      aiNotification.taskError(
-        task.id,
-        '❌ Demo生成失败',
-        error.message
-      )
+      aiNotification.taskError(task.id, `❌ Phase ${phase} Demo失败`, error.message)
       throw error
     }
   }
@@ -371,18 +354,6 @@ class AITaskQueue {
       console.error('GitHub推送失败:', error)
       throw error
     }
-  }
-  
-  /**
-   * 分析客户反馈
-   */
-  async taskAnalyzeFeedback(project, task) {
-    // TODO: 实现反馈分析
-    ElNotification({
-      title: '反馈分析',
-      message: `正在分析客户反馈...`,
-      type: 'info'
-    })
   }
   
   /**
@@ -695,12 +666,29 @@ class AITaskQueue {
 // 单例导出
 export const aiQueue = new AITaskQueue()
 
-// 便捷方法：触发自动化流程
-export function triggerAutomation(projectId) {
-  console.log(`🚀 启动自动化流程: ${projectId}`)
+// 便捷方法：触发自动化流程（支持阶段）
+export function triggerAutomation(projectId, phase = null) {
+  const projectStore = useProjectStore()
+  const project = projectStore.getProjectById(projectId)
   
-  // 添加PRD生成任务
-  aiQueue.addTask(projectId, 'generate_prd_client', 'high')
+  const targetPhase = phase || project?.currentPhase || 1
+  console.log(`🚀 启动 Phase ${targetPhase} 自动化流程: ${projectId}`)
+  
+  // 添加PRD生成任务（带阶段）
+  aiQueue.addTask(projectId, 'generate_prd_client', 'high', { phase: targetPhase })
+  
+  return aiQueue.getStatus()
+}
+
+// 便捷方法：触发阶段Demo生成
+export function triggerPhaseDemo(projectId, phase = null) {
+  const projectStore = useProjectStore()
+  const project = projectStore.getProjectById(projectId)
+  
+  const targetPhase = phase || project?.currentPhase || 1
+  console.log(`🚀 启动 Phase ${targetPhase} Demo生成: ${projectId}`)
+  
+  aiQueue.addTask(projectId, 'generate_demo', 'high', { phase: targetPhase })
   
   return aiQueue.getStatus()
 }

@@ -1,4 +1,5 @@
 import { useSettingsStore } from '@/stores/settings'
+import { useExperienceStore } from '@/stores/experience'
 
 /**
  * 调用 AI API
@@ -160,10 +161,241 @@ export async function callAIStream(messages, onChunk, options = {}) {
 }
 
 /**
- * PRD 生成 Prompt 模板
+ * PRD 生成 Prompt 模板 — 三阶段版本
+ * Phase 1 骨架：只生成 P0 核心功能
+ * Phase 2 血肉：在骨架基础上补充 P0+P1 完整功能
+ * Phase 3 衣服：在血肉基础上补充 P2 拓展功能
  */
 export const PRD_PROMPTS = {
-  // 客户版 PRD
+  // ============ Phase 1 骨架 ============
+  phase1_client: `你是一个专业的产品经理。请生成一份【Phase 1 - 核心骨架版】客户PRD。
+
+⚠️ 重要原则：
+- 只包含 P0 核心功能（最小可行产品 MVP）
+- 砍掉所有"锦上添花"的功能
+- 目标：让产品能跑通核心链路即可
+- 功能数量控制在 3-5 个以内
+
+请按以下格式输出（Markdown格式）：
+
+# [项目名称] - Phase 1 核心骨架 PRD（客户版）
+
+## 阶段说明
+> 🦴 骨架阶段：聚焦核心功能，快速验证可行性
+
+## 一、项目概述
+### 1.1 核心价值（一句话）
+### 1.2 目标用户
+
+## 二、核心功能清单（仅P0）
+[每个功能附带：功能名 | 一句话说明 | 用户价值]
+
+## 三、核心流程
+[用户完成主要任务的最短路径]
+
+## 四、验收标准
+[用户可以完成哪些操作即算骨架完成]
+
+---
+需求信息：
+`,
+
+  phase1_dev: `你是一个资深的技术产品经理。请生成一份【Phase 1 - 核心骨架版】开发PRD。
+
+⚠️ 重要原则：
+- 只实现 P0 核心功能的技术方案
+- 数据库只建核心表，字段精简
+- 接口只做必须的，无分页/搜索/过滤
+- 页面只做核心页面（3-5个）
+- 技术栈：UniApp + Vue3 + 微信云开发
+
+请按以下格式输出（Markdown格式）：
+
+# [项目名称] - Phase 1 核心骨架 PRD（开发版）
+
+## 阶段说明
+> 🦴 骨架阶段：最小技术实现，快速出Demo
+
+## 一、技术架构（精简版）
+### 1.1 技术栈
+### 1.2 核心项目结构（只列必须文件）
+
+## 二、数据库设计（核心表）
+[只建核心集合，字段精简]
+
+## 三、云函数设计（核心接口）
+[只实现必须的云函数]
+
+## 四、页面设计（核心页面）
+[只做3-5个必须的页面]
+
+## 五、快速验证清单
+[Demo出来后如何验证骨架是否OK]
+
+---
+需求信息：
+`,
+
+  // ============ Phase 2 血肉 ============
+  phase2_client: `你是一个专业的产品经理。请生成一份【Phase 2 - 完整功能版】客户PRD。
+
+⚠️ 重要原则：
+- 在Phase 1骨架基础上，补充P1重要功能
+- 完善用户体验和交互细节
+- 增加必要的辅助功能（搜索、过滤、设置等）
+- 不包含长期拓展功能
+
+请按以下格式输出（Markdown格式）：
+
+# [项目名称] - Phase 2 完整功能 PRD（客户版）
+
+## 阶段说明
+> 🫀 血肉阶段：在骨架基础上，补充完整功能和体验
+
+## Phase 1 已完成功能（回顾）
+[简要列出Phase 1已有的功能]
+
+## Phase 2 新增功能（P1重要功能）
+[每个功能附带：功能名 | 说明 | 为什么需要]
+
+## 完整功能清单
+[P0+P1 完整功能列表]
+
+## 用户体验优化
+[交互优化、视觉优化、流程优化]
+
+## 验收标准
+[Phase 2完成的验收标准]
+
+---
+Phase 1已有内容：
+{phase1_prd}
+
+需求信息：
+`,
+
+  phase2_dev: `你是一个资深的技术产品经理。请生成一份【Phase 2 - 完整功能版】开发PRD。
+
+⚠️ 重要原则：
+- 在Phase 1基础上增量开发
+- 补充数据库索引、分页、搜索等
+- 增加错误处理、加载状态、空状态
+- 补充权限控制、数据校验
+
+请按以下格式输出（Markdown格式）：
+
+# [项目名称] - Phase 2 完整功能 PRD（开发版）
+
+## 阶段说明
+> 🫀 血肉阶段：增量开发完整功能
+
+## Phase 1 已有（不重复开发）
+[简列已有的技术实现]
+
+## 新增数据库设计
+[新集合 + 已有集合新增字段]
+
+## 新增/修改云函数
+[新增的云函数 + 已有函数的改动]
+
+## 新增/修改页面
+[新增页面 + 已有页面的功能增强]
+
+## 体验优化技术方案
+[加载优化、缓存策略、错误处理]
+
+## 增量验证清单
+[Phase 2 增量部分的测试清单]
+
+---
+Phase 1已有内容：
+{phase1_prd}
+
+需求信息：
+`,
+
+  // ============ Phase 3 衣服 ============
+  phase3_client: `你是一个专业的产品经理。请生成一份【Phase 3 - 中长期拓展版】客户PRD。
+
+⚠️ 重要原则：
+- 在Phase 1+2基础上，规划P2拓展功能
+- 考虑商业化、运营、数据分析等方向
+- 支持未来扩展的功能预留
+- 标注每个功能的建议实施时间
+
+请按以下格式输出（Markdown格式）：
+
+# [项目名称] - Phase 3 中长期拓展 PRD（客户版）
+
+## 阶段说明
+> 👔 衣服阶段：拓展功能，提升竞争力
+
+## 已有功能回顾（Phase 1+2）
+[简列已有功能]
+
+## 拓展功能规划
+### 短期（1-2周）
+### 中期（1-2月）
+### 长期（3-6月）
+
+## 商业化/运营功能
+[会员、支付、推广、数据分析等]
+
+## 技术债务清理
+[Phase 1-2遗留的优化项]
+
+## 演进路线图
+
+---
+Phase 1+2已有内容：
+{prev_prds}
+
+需求信息：
+`,
+
+  phase3_dev: `你是一个资深的技术产品经理。请生成一份【Phase 3 - 中长期拓展版】开发PRD。
+
+⚠️ 重要原则：
+- 在Phase 1+2基础上增量设计
+- 考虑可扩展性架构优化
+- 提出性能优化方案
+- 规划监控和运维方案
+
+请按以下格式输出（Markdown格式）：
+
+# [项目名称] - Phase 3 中长期拓展 PRD（开发版）
+
+## 阶段说明
+> 👔 衣服阶段：架构升级+拓展开发
+
+## 架构优化
+[微服务拆分/性能优化/缓存策略]
+
+## 新增数据库设计
+[新集合 + 架构升级相关改动]
+
+## 新增云函数/接口
+[拓展功能的接口设计]
+
+## 新增页面
+[管理后台、数据大盘等]
+
+## 运维监控方案
+[日志/告警/性能监控]
+
+## 安全加固
+[支付安全/数据安全/防攻击]
+
+## 技术债务修复清单
+
+---
+Phase 1+2已有内容：
+{prev_prds}
+
+需求信息：
+`,
+
+  // ============ 旧版兼容（合并为全量PRD时使用）============
   client: `你是一个专业的产品经理，请根据以下需求信息生成一份客户版PRD文档。
 
 要求：
@@ -197,7 +429,6 @@ export const PRD_PROMPTS = {
 需求信息：
 `,
 
-  // 开发版 PRD
   dev: `你是一个资深的技术产品经理，请根据以下需求信息生成一份开发版PRD文档。
 
 要求：
@@ -237,7 +468,6 @@ export const PRD_PROMPTS = {
 需求信息：
 `,
 
-  // 协议文档生成
   legal: `你是一个专业的法务文档撰写专家，请根据以下小程序项目信息，生成相应的法律协议文档。
 
 要求：
@@ -254,87 +484,128 @@ export const PRD_PROMPTS = {
 }
 
 /**
- * 生成客户版PRD
- * @param {Object} requirement - 需求数据
- * @param {Object} options - 选项（experiences: 相关经验）
- * @returns {Promise<string>} PRD内容
+ * 构建经验上下文（通用）
  */
-export async function generateClientPRD(requirement, options = {}) {
-  // 🔴 构建经验上下文（优化版）
-  let experienceContext = ''
-  if (options.experiences && options.experiences.length > 0) {
-    // ⭐ 只使用前3条最相关的经验（三层筛选后的结果）
-    const topExperiences = options.experiences.slice(0, 3)
+function buildExperienceContext(experiences) {
+  if (!experiences || experiences.length === 0) return ''
+  
+  const topExperiences = experiences.slice(0, 3)
+  
+  let ctx = '\n\n【历史经验参考】（已通过标签索引优化查询）\n'
+  ctx += topExperiences.map((exp, index) => {
+    const mustReadTag = exp.mustRead ? '【⭐必读】' : ''
+    const priorityTag = `[优先级:${exp.priority}/5]`
     
-    experienceContext = '\n\n【历史经验参考】（已通过标签索引优化查询）\n'
-    experienceContext += topExperiences.map((exp, index) => {
-      // ⭐ 标记必读经验
-      const mustReadTag = exp.mustRead ? '【⭐必读】' : ''
-      const priorityTag = `[优先级:${exp.priority}/5]`
-      
-      return `${index + 1}. ${mustReadTag}${priorityTag} 项目：${exp.projectName}
+    return `${index + 1}. ${mustReadTag}${priorityTag} 项目：${exp.projectName}
 问题：${exp.analysis?.keyIssues?.[0]?.title || '无'}
 教训：${exp.analysis?.lessons?.[0] || '无'}
 建议：${exp.analysis?.recommendations?.[0] || '无'}
-使用次数：${exp.useCount || 0}次
 `
-    }).join('\n---\n')
-    
-    experienceContext += '\n⚠️ 特别注意标记为【必读】的经验，这些是关键教训！\n'
-    experienceContext += '💡 请参考以上经验，避免类似问题。\n'
-    
-    // ⭐ 增加使用次数
-    if (options.updateUseCount !== false) {
-      const experienceStore = useExperienceStore()
-      topExperiences.forEach(exp => {
-        const found = experienceStore.experiences.find(e => e.id === exp.id)
-        if (found) {
-          found.useCount = (found.useCount || 0) + 1
-        }
-      })
-      experienceStore.saveToStorage()
-    }
+  }).join('\n---\n')
+  
+  ctx += '\n⚠️ 特别注意标记为【必读】的经验，这些是关键教训！\n'
+  
+  // 增加使用次数
+  try {
+    const experienceStore = useExperienceStore()
+    topExperiences.forEach(exp => {
+      const found = experienceStore.experiences.find(e => e.id === exp.id)
+      if (found) found.useCount = (found.useCount || 0) + 1
+    })
+    experienceStore.saveToStorage()
+  } catch (e) { /* ignore */ }
+  
+  return ctx
+}
+
+/**
+ * 生成客户版PRD（支持三阶段）
+ * @param {Object} requirement - 需求数据
+ * @param {Object} options - 选项
+ *   - phase: 1|2|3 阶段编号（默认null使用旧版全量PRD）
+ *   - experiences: 相关经验
+ *   - prevPRDs: 前阶段PRD内容（Phase 2/3需要）
+ * @returns {Promise<string>} PRD内容
+ */
+export async function generateClientPRD(requirement, options = {}) {
+  const experienceContext = buildExperienceContext(options.experiences)
+  const phase = options.phase
+  
+  // 选择对应阶段的Prompt
+  let promptKey = 'client'
+  if (phase === 1) promptKey = 'phase1_client'
+  else if (phase === 2) promptKey = 'phase2_client'
+  else if (phase === 3) promptKey = 'phase3_client'
+  
+  let prompt = PRD_PROMPTS[promptKey]
+  
+  // Phase 2/3需要注入前阶段PRD
+  if (phase === 2 && options.prevPRDs?.phase1) {
+    prompt = prompt.replace('{phase1_prd}', options.prevPRDs.phase1)
+  } else if (phase === 3 && options.prevPRDs) {
+    const prev = `Phase 1:\n${options.prevPRDs.phase1 || ''}\n\nPhase 2:\n${options.prevPRDs.phase2 || ''}`
+    prompt = prompt.replace('{prev_prds}', prev)
   }
   
   const messages = [
     {
       role: 'system',
-      content: '你是一个专业的产品经理，擅长将客户需求转化为清晰的产品文档。'
+      content: phase
+        ? `你是一个专业的产品经理，擅长分阶段交付产品。当前是Phase ${phase}（${['', '骨架', '血肉', '衣服'][phase]}阶段）。`
+        : '你是一个专业的产品经理，擅长将客户需求转化为清晰的产品文档。'
     },
     {
       role: 'user',
-      content: PRD_PROMPTS.client + JSON.stringify(requirement, null, 2) + experienceContext
+      content: prompt + JSON.stringify(requirement, null, 2) + experienceContext
     }
   ]
   
   return await callAI(messages, {
     temperature: 0.7,
-    maxTokens: 4096
+    maxTokens: phase === 1 ? 3000 : 4096
   })
 }
 
 /**
- * 生成开发版PRD
+ * 生成开发版PRD（支持三阶段）
  * @param {Object} requirement - 需求数据
  * @param {string} clientPRD - 客户版PRD内容
- * @param {Object} options - 选项
+ * @param {Object} options - 选项（phase, prevPRDs）
  * @returns {Promise<string>} PRD内容
  */
 export async function generateDevPRD(requirement, clientPRD, options = {}) {
+  const phase = options.phase
+  
+  let promptKey = 'dev'
+  if (phase === 1) promptKey = 'phase1_dev'
+  else if (phase === 2) promptKey = 'phase2_dev'
+  else if (phase === 3) promptKey = 'phase3_dev'
+  
+  let prompt = PRD_PROMPTS[promptKey]
+  
+  if (phase === 2 && options.prevPRDs?.phase1) {
+    prompt = prompt.replace('{phase1_prd}', options.prevPRDs.phase1)
+  } else if (phase === 3 && options.prevPRDs) {
+    const prev = `Phase 1:\n${options.prevPRDs.phase1 || ''}\n\nPhase 2:\n${options.prevPRDs.phase2 || ''}`
+    prompt = prompt.replace('{prev_prds}', prev)
+  }
+  
   const messages = [
     {
       role: 'system',
-      content: '你是一个资深的技术产品经理，擅长将产品需求转化为详细的技术实现方案。'
+      content: phase
+        ? `你是一个资深的技术产品经理，擅长分阶段增量开发。当前是Phase ${phase}（${['', '骨架', '血肉', '衣服'][phase]}阶段）。`
+        : '你是一个资深的技术产品经理，擅长将产品需求转化为详细的技术实现方案。'
     },
     {
       role: 'user',
-      content: PRD_PROMPTS.dev + `\n\n原始需求：\n${JSON.stringify(requirement, null, 2)}\n\n客户版PRD：\n${clientPRD}`
+      content: prompt + `\n\n原始需求：\n${JSON.stringify(requirement, null, 2)}\n\n客户版PRD：\n${clientPRD}`
     }
   ]
   
   return await callAI(messages, {
-    temperature: 0.5,  // 技术文档要求更严谨
-    maxTokens: 8192
+    temperature: 0.5,
+    maxTokens: phase === 1 ? 4096 : 8192
   })
 }
 
