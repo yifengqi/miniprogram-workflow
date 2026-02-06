@@ -648,9 +648,28 @@ class AITaskQueue {
     return {
       running: this.running,
       currentTask: this.currentTask,
+      queue: [...this.queue],  // 暴露队列副本，方便进度查询
       queueLength: this.queue.length,
       pendingTasks: this.queue.filter(t => t.status === 'pending').length
     }
+  }
+  
+  /**
+   * 检查是否有指定类型的任务正在运行或排队
+   */
+  hasTask(taskType, projectId = null) {
+    // 检查当前运行的任务
+    if (this.currentTask) {
+      if (this.currentTask.taskType === taskType) {
+        if (!projectId || this.currentTask.projectId === projectId) return true
+      }
+    }
+    // 检查队列中的任务
+    return this.queue.some(t => {
+      if (t.taskType !== taskType) return false
+      if (projectId && t.projectId !== projectId) return false
+      return true
+    })
   }
   
   /**

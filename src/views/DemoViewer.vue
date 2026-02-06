@@ -288,18 +288,29 @@ function checkDemoProgress() {
   const project = projectStore.currentProject
   if (!project) return
   
-  const queueStatus = aiQueue.getStatus()
+  // ⭐ 使用修复后的 hasTask 方法
+  const hasDemoTask = aiQueue.hasTask('generate_demo', project.id)
   
-  // 检查是否有Demo生成任务
-  const hasDemoTask = queueStatus.running?.type === 'generate_demo' ||
-    queueStatus.queue.some(task => task.type === 'generate_demo' && task.projectId === project.id)
+  // 也检查是否有PRD任务在跑（PRD跑完才会到Demo）
+  const hasPrdTask = aiQueue.hasTask('generate_prd_client', project.id) || 
+                     aiQueue.hasTask('generate_prd_dev', project.id)
   
   if (hasDemoTask) {
     generatingDemo.value = true
-    demoProgress.value = Math.min(95, demoProgress.value + 5)
-  } else if (project.demoCode) {
+    demoProgress.value = Math.min(95, demoProgress.value + 2)
+  } else if (hasPrdTask) {
+    // PRD还在生成，Demo还没开始
+    generatingDemo.value = true
+    demoProgress.value = Math.min(30, demoProgress.value + 1)
+  } else if (activeDemoCode.value) {
     generatingDemo.value = false
     demoProgress.value = 100
+  } else {
+    // 没有任务也没有Demo，可能任务已失败
+    if (generatingDemo.value && demoProgress.value > 0) {
+      // 之前在生成，现在没了，可能失败了
+      generatingDemo.value = false
+    }
   }
 }
 

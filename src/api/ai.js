@@ -547,16 +547,24 @@ export async function generateClientPRD(requirement, options = {}) {
     prompt = prompt.replace('{prev_prds}', prev)
   }
   
+  // ⭐ 智能构建需求内容：如果有原始MD文档直接用，否则用JSON
+  let requirementContent
+  if (requirement.rawMarkdown) {
+    requirementContent = `\n\n【原始需求文档（Markdown）】\n${requirement.rawMarkdown}`
+  } else {
+    requirementContent = `\n\n【需求信息（结构化数据）】\n${JSON.stringify(requirement, null, 2)}`
+  }
+  
   const messages = [
     {
       role: 'system',
       content: phase
-        ? `你是一个专业的产品经理，擅长分阶段交付产品。当前是Phase ${phase}（${['', '骨架', '血肉', '衣服'][phase]}阶段）。`
-        : '你是一个专业的产品经理，擅长将客户需求转化为清晰的产品文档。'
+        ? `你是一个专业的产品经理，擅长分阶段交付产品。当前是Phase ${phase}（${['', '骨架', '血肉', '衣服'][phase]}阶段）。请仔细阅读需求文档全文再生成PRD。`
+        : '你是一个专业的产品经理，擅长将客户需求转化为清晰的产品文档。请仔细阅读需求文档全文再生成PRD。'
     },
     {
       role: 'user',
-      content: prompt + JSON.stringify(requirement, null, 2) + experienceContext
+      content: prompt + requirementContent + experienceContext
     }
   ]
   
@@ -590,16 +598,24 @@ export async function generateDevPRD(requirement, clientPRD, options = {}) {
     prompt = prompt.replace('{prev_prds}', prev)
   }
   
+  // ⭐ 智能构建需求内容
+  let requirementContent
+  if (requirement.rawMarkdown) {
+    requirementContent = `\n\n【原始需求文档】\n${requirement.rawMarkdown}`
+  } else {
+    requirementContent = `\n\n【需求信息】\n${JSON.stringify(requirement, null, 2)}`
+  }
+  
   const messages = [
     {
       role: 'system',
       content: phase
-        ? `你是一个资深的技术产品经理，擅长分阶段增量开发。当前是Phase ${phase}（${['', '骨架', '血肉', '衣服'][phase]}阶段）。`
+        ? `你是一个资深的技术产品经理，擅长分阶段增量开发。当前是Phase ${phase}（${['', '骨架', '血肉', '衣服'][phase]}阶段）。请仔细阅读需求文档。`
         : '你是一个资深的技术产品经理，擅长将产品需求转化为详细的技术实现方案。'
     },
     {
       role: 'user',
-      content: prompt + `\n\n原始需求：\n${JSON.stringify(requirement, null, 2)}\n\n客户版PRD：\n${clientPRD}`
+      content: prompt + requirementContent + `\n\n客户版PRD：\n${clientPRD}`
     }
   ]
   

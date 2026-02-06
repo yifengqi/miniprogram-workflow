@@ -14,111 +14,132 @@
       </div>
     </div>
     
-    <!-- ⭐ MD文档上传区域 -->
-    <div 
-      class="md-upload-zone card"
-      :class="{ dragging: isDragging }"
-      @dragover.prevent="isDragging = true"
-      @dragleave.prevent="isDragging = false"
-      @drop.prevent="handleFileDrop"
-      @click="triggerFileInput"
-    >
-      <input 
-        ref="fileInputRef"
-        type="file" 
-        accept=".md,.markdown,.txt"
-        multiple
-        style="display: none;"
-        @change="handleFileSelect"
-      />
-      
-      <div class="upload-content">
-        <div class="upload-icon">📄</div>
-        <div class="upload-text">
-          <h4>上传需求文档</h4>
-          <p>拖拽 .md 文件到此处，或 <strong>点击选择文件</strong>，或 <strong>Ctrl+V 粘贴</strong> Markdown 内容</p>
+    <!-- ⭐ 新增需求入口 -->
+    <div class="add-requirement-section">
+      <div class="add-cards">
+        <!-- 入口1：快速描述 → AI生成需求文档 -->
+        <div class="add-card card" @click="showQuickInput = true">
+          <div class="add-card-icon">💬</div>
+          <h4>快速描述</h4>
+          <p>输入简单想法，AI帮你生成完整需求文档</p>
+        </div>
+        
+        <!-- 入口2：上传已有文档 -->
+        <div 
+          class="add-card card"
+          :class="{ dragging: isDragging }"
+          @dragover.prevent="isDragging = true"
+          @dragleave.prevent="isDragging = false"
+          @drop.prevent="handleFileDrop"
+          @click="triggerFileInput"
+        >
+          <input 
+            ref="fileInputRef"
+            type="file" 
+            accept=".md,.markdown,.txt"
+            multiple
+            style="display: none;"
+            @change="handleFileSelect"
+          />
+          <div class="add-card-icon">📄</div>
+          <h4>上传文档</h4>
+          <p>拖拽 .md 文件或点击选择，支持 Ctrl+V 粘贴</p>
         </div>
       </div>
-      
-      <!-- 粘贴输入框（展开时显示） -->
-      <div v-if="showPasteArea" class="paste-area" @click.stop>
-        <el-input
-          ref="pasteInputRef"
-          v-model="pasteContent"
-          type="textarea"
-          :rows="8"
-          placeholder="在此粘贴 Markdown 内容...&#10;&#10;支持格式：&#10;# 项目名称&#10;## 项目背景&#10;## 核心功能&#10;..."
-          @paste="handlePaste"
-        />
-        <div class="paste-actions">
-          <el-button size="small" @click.stop="showPasteArea = false">取消</el-button>
-          <el-button type="primary" size="small" @click.stop="submitPasteContent" :disabled="!pasteContent.trim()">
-            导入到需求池
-          </el-button>
-        </div>
-      </div>
-      
-      <el-button 
-        v-if="!showPasteArea"
-        type="text" 
-        size="small" 
-        class="paste-toggle"
-        @click.stop="openPasteArea"
-      >
-        或者直接粘贴文本内容 →
-      </el-button>
     </div>
     
-    <!-- 导入预览弹窗 -->
-    <el-dialog v-model="showImportPreview" title="📄 导入预览" width="700px" top="5vh">
-      <div class="import-preview">
+    <!-- ⭐ 快速描述弹窗 -->
+    <el-dialog v-model="showQuickInput" title="💬 快速描述你的想法" width="650px">
+      <div class="quick-input-form">
         <el-alert type="info" :closable="false" style="margin-bottom: 16px;">
           <template #title>
-            已从文档中识别出以下信息，确认后将加入需求池
+            简单描述就行，AI 会结合标准模板自动生成完整的需求文档
           </template>
         </el-alert>
         
         <el-form label-position="top">
-          <el-form-item label="项目名称">
+          <el-form-item label="项目名称" required>
+            <el-input v-model="quickForm.appName" placeholder="例如：智能衣橱、抢票助手" />
+          </el-form-item>
+          
+          <el-form-item label="简单描述一下你想做什么">
+            <el-input 
+              v-model="quickForm.description" 
+              type="textarea" 
+              :rows="6"
+              placeholder="用你自己的话描述就行，比如：&#10;&#10;我想做一个衣橱管理小程序，用户拍照录入衣物，AI根据天气和场合推荐每日穿搭。解决每天不知道穿什么的问题..."
+            />
+          </el-form-item>
+          
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="目标用户（选填）">
+                <el-input v-model="quickForm.targetUser" placeholder="例如：22-35岁都市白领" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="预算/时间（选填）">
+                <el-input v-model="quickForm.budget" placeholder="例如：1万以内，1个月" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-form>
+      </div>
+      
+      <template #footer>
+        <el-button @click="showQuickInput = false">取消</el-button>
+        <el-button 
+          type="primary" 
+          :loading="aiGeneratingReq"
+          @click="generateRequirementDoc"
+          :disabled="!quickForm.appName?.trim() || !quickForm.description?.trim()"
+        >
+          {{ aiGeneratingReq ? 'AI 正在生成需求文档...' : '🤖 AI 生成需求文档' }}
+        </el-button>
+      </template>
+    </el-dialog>
+    
+    <!-- 导入预览弹窗 -->
+    <el-dialog v-model="showImportPreview" title="📄 导入预览" width="750px" top="5vh">
+      <div class="import-preview">
+        <el-alert type="success" :closable="false" style="margin-bottom: 16px;">
+          <template #title>
+            文档将整篇存入需求池，立项时 AI 会直接阅读原文档生成 PRD，无需手动拆分
+          </template>
+        </el-alert>
+        
+        <el-form label-position="top">
+          <el-form-item label="项目名称（用于在需求池中显示）" required>
             <el-input v-model="importData.appName" placeholder="请输入项目名称" />
-          </el-form-item>
-          <el-form-item label="项目背景">
-            <el-input v-model="importData.background" type="textarea" :rows="3" placeholder="项目背景描述" />
-          </el-form-item>
-          <el-form-item label="核心功能（P0）">
-            <el-input v-model="importData.featuresP0" type="textarea" :rows="4" placeholder="必须实现的核心功能" />
-          </el-form-item>
-          <el-form-item label="重要功能（P1）">
-            <el-input v-model="importData.featuresP1" type="textarea" :rows="3" placeholder="建议实现的功能" />
-          </el-form-item>
-          <el-form-item label="可选功能（P2）">
-            <el-input v-model="importData.featuresP2" type="textarea" :rows="2" placeholder="锦上添花的功能" />
           </el-form-item>
           
           <el-row :gutter="16">
             <el-col :span="8">
-              <el-form-item label="联系方式">
-                <el-input v-model="importData.contact" placeholder="选填" />
+              <el-form-item label="联系方式（选填）">
+                <el-input v-model="importData.contact" placeholder="手机/微信" />
               </el-form-item>
             </el-col>
             <el-col :span="8">
-              <el-form-item label="预算">
-                <el-input v-model="importData.budget" placeholder="选填" />
+              <el-form-item label="预算（选填）">
+                <el-input v-model="importData.budget" placeholder="预算范围" />
               </el-form-item>
             </el-col>
             <el-col :span="8">
-              <el-form-item label="期望时间">
-                <el-input v-model="importData.expectedTime" placeholder="选填" />
+              <el-form-item label="期望时间（选填）">
+                <el-input v-model="importData.expectedTime" placeholder="期望上线时间" />
               </el-form-item>
             </el-col>
           </el-row>
         </el-form>
         
-        <el-collapse>
-          <el-collapse-item title="📝 查看原始 Markdown 内容">
-            <pre class="raw-md">{{ importData._rawMarkdown }}</pre>
-          </el-collapse-item>
-        </el-collapse>
+        <!-- 文档内容预览 -->
+        <div class="md-preview-section">
+          <div class="md-preview-header">
+            <h4>📝 文档内容预览</h4>
+            <el-tag size="small">{{ importData._wordCount }} 字 · {{ importData._sectionCount }} 个章节</el-tag>
+          </div>
+          <div class="md-preview-body" v-html="importData._renderedHtml"></div>
+        </div>
       </div>
       
       <template #footer>
@@ -372,11 +393,14 @@ import {
 } from '@element-plus/icons-vue'
 import { useRequirementPoolStore } from '@/stores/requirementPool'
 import { useProjectStore } from '@/stores/project'
-import { triggerAutomation } from '@/utils/aiQueue'  // ⭐ 新增
+import { useSettingsStore } from '@/stores/settings'
+import { triggerAutomation } from '@/utils/aiQueue'
+import { callAI } from '@/api/ai'
 
 const router = useRouter()
 const poolStore = useRequirementPoolStore()
 const projectStore = useProjectStore()
+const settingsStore = useSettingsStore()
 
 const activeTab = ref('pending')
 const detailVisible = ref(false)
@@ -396,15 +420,126 @@ const fileInputRef = ref(null)
 const pasteInputRef = ref(null)
 const importData = ref({
   appName: '',
-  background: '',
-  featuresP0: '',
-  featuresP1: '',
-  featuresP2: '',
   contact: '',
   budget: '',
   expectedTime: '',
-  _rawMarkdown: ''
+  _rawMarkdown: '',
+  _renderedHtml: '',
+  _wordCount: 0,
+  _sectionCount: 0
 })
+
+// ⭐ 快速描述相关
+const showQuickInput = ref(false)
+const aiGeneratingReq = ref(false)
+const quickForm = ref({
+  appName: '',
+  description: '',
+  targetUser: '',
+  budget: ''
+})
+
+// ⭐ AI 根据简单描述生成完整需求文档
+async function generateRequirementDoc() {
+  if (!quickForm.value.appName?.trim() || !quickForm.value.description?.trim()) {
+    ElMessage.warning('请填写项目名称和描述')
+    return
+  }
+  
+  if (!settingsStore.isConfigured()) {
+    ElMessage.warning('请先在设置中配置 AI 接口')
+    return
+  }
+  
+  aiGeneratingReq.value = true
+  
+  try {
+    const prompt = `你是一个专业的产品经理，请根据用户的简单描述，生成一份完整、结构化的需求文档（Markdown格式）。
+
+用户输入：
+- 项目名称：${quickForm.value.appName}
+- 想法描述：${quickForm.value.description}
+${quickForm.value.targetUser ? `- 目标用户：${quickForm.value.targetUser}` : ''}
+${quickForm.value.budget ? `- 预算/时间：${quickForm.value.budget}` : ''}
+
+请按以下标准模板输出，每个部分都要有实质内容：
+
+# ${quickForm.value.appName} - 需求文档
+
+## 一、项目基本信息
+### 1.1 项目背景（核心痛点、解决什么问题）
+### 1.2 小程序名称
+### 1.3 小程序类型
+
+## 二、用户相关
+### 2.1 目标用户画像（至少2-3类用户）
+### 2.2 使用场景（至少3-5个典型场景）
+### 2.3 预计用户规模
+
+## 三、核心功能
+### 3.1 必须要有的功能（P0）—— 3-5个核心功能，每个附详细说明
+### 3.2 希望有的功能（P1）—— 4-6个重要功能
+### 3.3 锦上添花的功能（P2）—— 3-5个拓展功能
+### 3.4 登录需求
+
+## 四、管理后台
+### 4.1 是否需要管理后台
+### 4.2 后台功能清单
+
+## 五、数据与内容
+### 5.1 需要存储哪些数据
+### 5.2 内容来源
+
+## 六、支付与交易
+### 6.1 是否涉及支付（MVP阶段建议）
+
+## 七、设计与体验
+### 7.1 参考产品
+### 7.2 UI风格偏好
+### 7.3 主色调建议
+
+## 八、技术建议
+### 8.1 推荐技术栈
+### 8.2 关键技术挑战与应对策略
+
+## 九、时间与预算
+### 9.1 分阶段时间规划（Phase 1/2/3）
+### 9.2 成本预估
+
+## 十、功能优先级矩阵
+| 优先级 | 功能 | 用户价值 | 技术难度 | 建议周期 |
+|--------|------|---------|---------|---------|
+（列出所有P0/P1/P2功能）
+
+---
+要求：
+1. 内容要具体、有深度，不要空泛
+2. 每个P0功能都要有子功能点说明
+3. 基于用户描述合理推导出他没想到的功能
+4. 技术方案要具体可执行
+5. 输出纯Markdown格式，直接可用
+`
+
+    const result = await callAI([
+      { role: 'system', content: '你是一个资深产品经理，擅长将模糊的想法转化为结构化、可执行的需求文档。输出纯Markdown格式。' },
+      { role: 'user', content: prompt }
+    ], { maxTokens: 8192, temperature: 0.7 })
+    
+    // AI生成完成，打开预览
+    showQuickInput.value = false
+    parseAndPreview(result, quickForm.value.appName + '.md')
+    
+    // 清空表单
+    quickForm.value = { appName: '', description: '', targetUser: '', budget: '' }
+    
+    ElMessage.success('需求文档已生成，请预览确认')
+    
+  } catch (error) {
+    ElMessage.error('AI生成失败: ' + (error.message || '未知错误'))
+  } finally {
+    aiGeneratingReq.value = false
+  }
+}
 
 // ⭐ 全局键盘监听（Ctrl+V 粘贴）
 function handleGlobalPaste(e) {
@@ -491,108 +626,56 @@ function submitPasteContent() {
   pasteContent.value = ''
 }
 
-// ⭐ 解析 Markdown 并打开预览
+// ⭐ 解析 Markdown 并打开预览（新逻辑：不拆分，整篇存储）
 function parseAndPreview(mdContent, fileName = '') {
-  const parsed = parseMdToRequirement(mdContent, fileName)
-  importData.value = { ...parsed, _rawMarkdown: mdContent }
-  showImportPreview.value = true
-}
-
-// ⭐ 核心：MD解析器
-function parseMdToRequirement(md, fileName = '') {
-  const result = {
-    appName: '',
-    background: '',
-    featuresP0: '',
-    featuresP1: '',
-    featuresP2: '',
+  // 1. 提取标题（智能匹配多种格式）
+  let appName = ''
+  // 优先取一级标题
+  const h1Match = mdContent.match(/^#\s+(.+)$/m)
+  if (h1Match) {
+    // 清理 emoji 和特殊标记
+    appName = h1Match[1].replace(/[📝📋🔥💡📊📐💰🎯🚀]/g, '').replace(/[-—–].*需求文档.*$/i, '').trim()
+    if (!appName) appName = h1Match[1].trim()
+  }
+  // 用文件名兜底
+  if (!appName && fileName) {
+    appName = fileName.replace(/\.(md|markdown|txt)$/i, '').replace(/需求文档|需求说明|PRD/g, '').trim()
+  }
+  if (!appName) appName = '未命名文档'
+  
+  // 2. 统计信息
+  const wordCount = mdContent.replace(/\s+/g, '').length
+  const sectionCount = (mdContent.match(/^##\s+/gm) || []).length
+  
+  // 3. 简单渲染预览（安全的HTML，只处理标题和列表）
+  let renderedHtml = mdContent
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;')  // 转义HTML
+    .replace(/^### (.+)$/gm, '<h4 style="margin:12px 0 4px;color:var(--text-primary)">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 style="margin:16px 0 6px;color:var(--text-primary);border-bottom:1px solid var(--border-color,#eee);padding-bottom:4px;">$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2 style="margin:0 0 8px;font-size:20px;">$1</h2>')
+    .replace(/^- \[x\] (.+)$/gm, '<div style="margin:2px 0;">✅ $1</div>')
+    .replace(/^- \[ \] (.+)$/gm, '<div style="margin:2px 0;opacity:0.5;">⬜ $1</div>')
+    .replace(/^- (.+)$/gm, '<div style="margin:2px 0;">• $1</div>')
+    .replace(/```([\s\S]*?)```/g, '<pre style="background:#f5f7fa;padding:12px;border-radius:6px;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-x:auto;">$1</pre>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n\n/g, '<br/>')
+  
+  // 4. 设置预览数据
+  importData.value = {
+    appName,
     contact: '',
     budget: '',
     expectedTime: '',
-    appType: [],
-    targetUser: '',
-    otherNotes: ''
+    _rawMarkdown: mdContent,
+    _renderedHtml: renderedHtml,
+    _wordCount: wordCount,
+    _sectionCount: sectionCount
   }
   
-  // 1. 提取一级标题作为项目名
-  const h1Match = md.match(/^#\s+(.+)$/m)
-  if (h1Match) {
-    result.appName = h1Match[1].trim()
-  } else if (fileName) {
-    // 用文件名
-    result.appName = fileName.replace(/\.(md|markdown|txt)$/i, '')
-  }
-  
-  // 2. 按二级标题拆分段落
-  const sections = {}
-  const sectionRegex = /^##\s+(.+)$/gm
-  let match
-  const sectionPositions = []
-  
-  while ((match = sectionRegex.exec(md)) !== null) {
-    sectionPositions.push({ title: match[1].trim(), index: match.index + match[0].length })
-  }
-  
-  sectionPositions.forEach((sec, i) => {
-    const end = i + 1 < sectionPositions.length ? sectionPositions[i + 1].index - sectionPositions[i + 1].title.length - 3 : md.length
-    const content = md.slice(sec.index, end).trim()
-    sections[sec.title.toLowerCase()] = content
-    // 也存原始标题
-    sections[sec.title] = content
-  })
-  
-  // 3. 智能匹配各字段
-  for (const [title, content] of Object.entries(sections)) {
-    const t = title.toLowerCase()
-    
-    // 背景
-    if (t.includes('背景') || t.includes('概述') || t.includes('简介') || t.includes('overview') || t.includes('introduction')) {
-      result.background = content
-    }
-    // 核心功能
-    else if (t.includes('核心功能') || t.includes('p0') || t.includes('必须') || t.includes('core') || t.includes('mvp')) {
-      result.featuresP0 = content
-    }
-    // 重要功能
-    else if (t.includes('重要功能') || t.includes('p1') || t.includes('期望') || t.includes('important')) {
-      result.featuresP1 = content
-    }
-    // 可选功能
-    else if (t.includes('可选') || t.includes('p2') || t.includes('拓展') || t.includes('optional') || t.includes('扩展') || t.includes('中长期')) {
-      result.featuresP2 = content
-    }
-    // 目标用户
-    else if (t.includes('用户') || t.includes('受众') || t.includes('target')) {
-      result.targetUser = content
-    }
-    // 预算
-    else if (t.includes('预算') || t.includes('budget') || t.includes('费用')) {
-      result.budget = content
-    }
-    // 时间
-    else if (t.includes('时间') || t.includes('deadline') || t.includes('timeline') || t.includes('期限')) {
-      result.expectedTime = content
-    }
-    // 功能需求（通用）
-    else if (t.includes('功能') || t.includes('feature') || t.includes('需求')) {
-      // 如果P0还空着，放P0
-      if (!result.featuresP0) result.featuresP0 = content
-      else if (!result.featuresP1) result.featuresP1 = content
-    }
-  }
-  
-  // 4. 如果完全没解析到结构，把全文当背景
-  if (!result.background && !result.featuresP0) {
-    // 去掉一级标题后，剩余当背景
-    const noH1 = md.replace(/^#\s+.+$/m, '').trim()
-    result.background = noH1.slice(0, 500)
-    result.featuresP0 = noH1.length > 500 ? noH1.slice(500) : ''
-  }
-  
-  return result
+  showImportPreview.value = true
 }
 
-// ⭐ 确认导入
+// ⭐ 确认导入（整篇MD存入需求池）
 function confirmImport() {
   if (!importData.value.appName?.trim()) {
     ElMessage.warning('项目名称不能为空')
@@ -601,18 +684,14 @@ function confirmImport() {
   
   const reqData = {
     appName: importData.value.appName,
-    background: importData.value.background,
-    featuresP0: importData.value.featuresP0,
-    featuresP1: importData.value.featuresP1,
-    featuresP2: importData.value.featuresP2,
     contact: importData.value.contact,
     budget: importData.value.budget,
     expectedTime: importData.value.expectedTime,
-    targetUser: importData.value.targetUser || '',
-    appType: importData.value.appType || [],
-    otherNotes: importData.value.otherNotes || '',
+    // ⭐ 关键：整篇原始MD存储，立项时直接给AI
+    rawMarkdown: importData.value._rawMarkdown,
     _source: 'md_import',
-    _rawMarkdown: importData.value._rawMarkdown
+    // 从MD中提取的简要背景（用于列表显示）
+    background: extractBrief(importData.value._rawMarkdown)
   }
   
   poolStore.addRequirement(reqData)
@@ -620,6 +699,21 @@ function confirmImport() {
   activeTab.value = 'pending'
   
   ElMessage.success(`「${reqData.appName}」已导入需求池！`)
+}
+
+// 提取简要背景（用于需求卡片显示）
+function extractBrief(md) {
+  // 尝试找「项目背景」或「核心痛点」相关段落
+  const bgMatch = md.match(/(?:项目背景|核心痛点|产品定位)[：:]*\s*\n+```?\n?([\s\S]*?)(?:\n```|\n##|\n---)/i)
+  if (bgMatch) return bgMatch[1].trim().slice(0, 200)
+  
+  // 找第一个 > 引用
+  const quoteMatch = md.match(/^>\s*(.+)/m)
+  if (quoteMatch) return quoteMatch[1].trim()
+  
+  // 兜底：取第一级标题后的前200字
+  const afterH1 = md.replace(/^#\s+.+\n/, '').trim()
+  return afterH1.slice(0, 200).replace(/[#\-*>`]/g, '').trim()
 }
 
 // 根据状态筛选需求
@@ -831,67 +925,58 @@ onUnmounted(() => {
   margin: 0;
 }
 
-/* ⭐ MD上传区域 */
-.md-upload-zone {
+/* ⭐ 新增需求入口 */
+.add-requirement-section {
   margin-bottom: 24px;
-  padding: 24px;
-  border: 2px dashed var(--border-color);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s;
-  text-align: center;
 }
 
-.md-upload-zone:hover {
-  border-color: var(--primary-color);
-  background: rgba(212, 175, 55, 0.03);
-}
-
-.md-upload-zone.dragging {
-  border-color: #409eff;
-  background: rgba(64, 158, 255, 0.08);
-  transform: scale(1.01);
-  box-shadow: 0 0 20px rgba(64, 158, 255, 0.15);
-}
-
-.upload-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.add-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
-.upload-icon {
-  font-size: 40px;
+.add-card {
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 2px dashed var(--border-color);
 }
 
-.upload-text h4 {
-  margin: 0 0 4px 0;
+.add-card:hover {
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+.add-card.dragging {
+  border-color: #409eff;
+  background: rgba(64, 158, 255, 0.08);
+  box-shadow: 0 0 20px rgba(64, 158, 255, 0.15);
+}
+
+.add-card-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+.add-card h4 {
+  margin: 0 0 6px 0;
   font-size: 16px;
   color: var(--text-primary);
 }
 
-.upload-text p {
+.add-card p {
   margin: 0;
   font-size: 13px;
   color: var(--text-secondary);
 }
 
-.paste-toggle {
-  margin-top: 8px;
-  font-size: 13px;
-}
-
-.paste-area {
-  margin-top: 16px;
-  text-align: left;
-}
-
-.paste-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
+/* 快速描述弹窗 */
+.quick-input-form {
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 /* 导入预览 */
@@ -900,16 +985,34 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.raw-md {
-  background: var(--bg-tertiary, #f5f7fa);
-  padding: 16px;
+.md-preview-section {
+  margin-top: 16px;
+  border: 1px solid var(--border-color, #eee);
   border-radius: 8px;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 300px;
+  overflow: hidden;
+}
+
+.md-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-tertiary, #f5f7fa);
+  border-bottom: 1px solid var(--border-color, #eee);
+}
+
+.md-preview-header h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.md-preview-body {
+  padding: 16px;
+  max-height: 400px;
   overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary, #666);
 }
 
 .status-tabs {
