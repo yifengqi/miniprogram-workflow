@@ -2,19 +2,42 @@
   <div class="home-page">
     <div class="page-header">
       <h1 class="page-title">项目管理</h1>
-      <p class="page-desc">管理你的小程序开发项目，快速启动标准化流程</p>
+      <p class="page-desc">从需求池管理项目，专业化工作流程</p>
     </div>
     
-    <!-- 快速操作 -->
-    <div class="quick-actions">
-      <el-button type="primary" size="large" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>
-        新建项目
-      </el-button>
+    <!-- 快速入口卡片 -->
+    <div class="quick-cards">
+      <div class="quick-card card" @click="$router.push('/requirement-pool')">
+        <div class="card-icon">📋</div>
+        <h3>需求池</h3>
+        <p>管理客户需求，选择立项</p>
+        <el-badge 
+          v-if="poolStore.pendingCount > 0" 
+          :value="poolStore.pendingCount"
+          class="badge-float"
+        />
+      </div>
+      
+      <div class="quick-card card" @click="showShareDialog = true">
+        <div class="card-icon">📤</div>
+        <h3>分享需求表单</h3>
+        <p>发送给客户收集需求</p>
+      </div>
+      
+      <div class="quick-card card" @click="$router.push('/prd')">
+        <div class="card-icon">📝</div>
+        <h3>生成PRD</h3>
+        <p>AI自动生成项目文档</p>
+      </div>
     </div>
     
     <!-- 项目列表 -->
-    <div class="project-grid" v-if="projectStore.projects.length > 0">
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">进行中的项目 ({{ projectStore.projects.length }})</h2>
+      </div>
+      
+      <div v-if="projectStore.projects.length > 0" class="project-grid">
       <div 
         v-for="project in projectStore.projects" 
         :key="project.id"
@@ -75,11 +98,14 @@
     
     <!-- 空状态 -->
     <div v-else class="empty-state">
-      <el-icon><FolderOpened /></el-icon>
-      <p>还没有项目，点击上方按钮创建第一个项目</p>
+      <el-icon :size="80"><FolderOpened /></el-icon>
+      <p>还没有项目，去需求池看看有没有可以立项的需求吧</p>
+      <el-button type="primary" @click="$router.push('/requirement-pool')">
+        进入需求池
+      </el-button>
     </div>
     
-    <!-- 流程说明 -->
+    <!-- 工作流程说明 -->
     <div class="workflow-guide card">
       <div class="card-header">
         <h3 class="card-title">标准化开发流程</h3>
@@ -88,51 +114,44 @@
         <div class="workflow-step">
           <div class="step-number">1</div>
           <div class="step-content">
-            <h4>需求收集</h4>
-            <p>使用结构化表单向客户收集需求</p>
+            <h4>分享表单</h4>
+            <p>发送需求表单给客户</p>
           </div>
         </div>
         <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
         <div class="workflow-step">
           <div class="step-number">2</div>
           <div class="step-content">
-            <h4>PRD生成</h4>
-            <p>AI自动生成客户版+开发版PRD</p>
+            <h4>进入需求池</h4>
+            <p>客户提交后自动进入</p>
           </div>
         </div>
         <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
         <div class="workflow-step">
           <div class="step-number">3</div>
           <div class="step-content">
-            <h4>开发实现</h4>
-            <p>按PRD进行开发迭代</p>
+            <h4>评估立项</h4>
+            <p>选择需求创建项目</p>
           </div>
         </div>
         <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
         <div class="workflow-step">
           <div class="step-number">4</div>
           <div class="step-content">
-            <h4>检查上线</h4>
-            <p>完成非功能性检查清单</p>
+            <h4>生成PRD</h4>
+            <p>AI生成项目文档</p>
+          </div>
+        </div>
+        <div class="workflow-arrow"><el-icon><ArrowRight /></el-icon></div>
+        <div class="workflow-step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <h4>开发上线</h4>
+            <p>参考PRD和检查清单</p>
           </div>
         </div>
       </div>
     </div>
-    
-    <!-- 新建项目对话框 -->
-    <el-dialog v-model="showCreateDialog" title="新建项目" width="400px">
-      <el-form @submit.prevent="createProject">
-        <el-form-item label="项目名称">
-          <el-input v-model="newProjectName" placeholder="请输入项目名称" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="createProject" :disabled="!newProjectName.trim()">
-          创建
-        </el-button>
-      </template>
-    </el-dialog>
     
     <!-- 重命名对话框 -->
     <el-dialog v-model="showRenameDialog" title="重命名项目" width="400px">
@@ -189,17 +208,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MoreFilled, Link, PictureRounded, Download, Share, Edit, Delete } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
+import { useRequirementPoolStore } from '@/stores/requirementPool'  // ⭐ 新增
 
 const router = useRouter()
 const projectStore = useProjectStore()
-
-const showCreateDialog = ref(false)
-const newProjectName = ref('')
+const poolStore = useRequirementPoolStore()  // ⭐ 新增
 
 const showRenameDialog = ref(false)
 const renameValue = ref('')
@@ -212,6 +230,11 @@ const qrcodeContainer = ref(null)
 
 const publicFormUrl = window.location.origin + '/public-form'
 
+// ⭐ 初始化
+onMounted(() => {
+  poolStore.loadFromStorage()
+})
+
 function formatTime(isoString) {
   if (!isoString) return ''
   const date = new Date(isoString)
@@ -223,14 +246,6 @@ function formatTime(isoString) {
   if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
   if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
   return date.toLocaleDateString()
-}
-
-function createProject() {
-  if (!newProjectName.value.trim()) return
-  projectStore.createProject(newProjectName.value.trim())
-  showCreateDialog.value = false
-  newProjectName.value = ''
-  ElMessage.success('项目创建成功')
 }
 
 function selectProject(project) {
@@ -323,6 +338,67 @@ function renameProject() {
 
 .quick-actions {
   margin-bottom: 24px;
+}
+
+/* 快速入口卡片 */
+.quick-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.quick-card {
+  position: relative;
+  padding: 32px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.quick-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.quick-card .card-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.quick-card h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+}
+
+.quick-card p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.badge-float {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+/* 项目列表区域 */
+.section {
+  margin-bottom: 32px;
+}
+
+.section-header {
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
 }
 
 /* 分享弹窗 */

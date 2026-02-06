@@ -32,19 +32,24 @@
             <span>项目首页</span>
           </el-menu-item>
           
-          <el-menu-item index="/requirement">
-            <el-icon><Document /></el-icon>
-            <span>需求收集</span>
+          <el-menu-item index="/requirement-pool">
+            <template #title>
+              <span style="display: flex; align-items: center; gap: 8px;">
+                <span>需求池</span>
+                <el-badge 
+                  v-if="poolStore.pendingCount > 0" 
+                  :value="poolStore.pendingCount" 
+                  :max="99"
+                  style="margin-top: -2px;"
+                />
+              </span>
+            </template>
+            <el-icon><Inbox /></el-icon>
           </el-menu-item>
           
           <el-menu-item index="/prd">
             <el-icon><EditPen /></el-icon>
             <span>PRD生成</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/submissions">
-            <el-icon><MessageBox /></el-icon>
-            <span>客户提交</span>
           </el-menu-item>
           
           <el-menu-item index="/experience">
@@ -84,14 +89,21 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useRequirementPoolStore } from '@/stores/requirementPool'  // ⭐ 新增
 
 const route = useRoute()
+const poolStore = useRequirementPoolStore()  // ⭐ 新增
 const isCollapse = ref(false)
 
 const currentRoute = computed(() => route.path)
 const isPublicPage = computed(() => route.meta?.public === true)
+
+// ⭐ 初始化需求池
+onMounted(() => {
+  poolStore.loadFromStorage()
+})
 </script>
 
 <style scoped>

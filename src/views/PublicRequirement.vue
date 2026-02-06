@@ -58,6 +58,49 @@
               class="other-input"
             />
           </el-form-item>
+          
+          <!-- ⭐ 新增：联系方式和预算信息（选填） -->
+          <el-divider content-position="left">
+            <span style="color: var(--text-secondary); font-size: 14px;">
+              联系方式（选填，方便我们与您沟通）
+            </span>
+          </el-divider>
+          
+          <el-form-item label="您的联系方式">
+            <el-input 
+              v-model="form.contact" 
+              placeholder="手机号或微信号（选填）"
+            >
+              <template #prefix>
+                <el-icon><Phone /></el-icon>
+              </template>
+            </el-input>
+            <div class="form-tip">💡 填写后我们能更快与您沟通项目细节</div>
+          </el-form-item>
+          
+          <el-form-item label="预算范围">
+            <el-input 
+              v-model="form.budget" 
+              placeholder="如：5000-10000元（选填）"
+            >
+              <template #prefix>
+                <el-icon><Wallet /></el-icon>
+              </template>
+            </el-input>
+            <div class="form-tip">💡 帮助我们更好地评估项目规模</div>
+          </el-form-item>
+          
+          <el-form-item label="期望完成时间">
+            <el-input 
+              v-model="form.expectedTime" 
+              placeholder="如：2个月内 或 3月底前（选填）"
+            >
+              <template #prefix>
+                <el-icon><Calendar /></el-icon>
+              </template>
+            </el-input>
+            <div class="form-tip">💡 帮助我们合理安排开发进度</div>
+          </el-form-item>
         </el-form>
       </div>
       
@@ -396,6 +439,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Phone, Wallet, Calendar } from '@element-plus/icons-vue'  // ⭐ 新增图标
 
 const currentStep = ref(0)
 const submitSuccess = ref(false)
@@ -408,6 +452,9 @@ const form = reactive({
   appName: '',
   appType: [],
   appTypeOther: '',
+  contact: '',  // ⭐ 联系方式
+  budget: '',  // ⭐ 预算
+  expectedTime: '',  // ⭐ 新增：期望完成时间
   targetUser: '',
   userScenario: '',
   userScale: '',
@@ -432,9 +479,7 @@ const form = reactive({
   appId: '',
   backend: '',
   timeline: '',
-  budget: '',
   operationCost: '',
-  contact: '',
   otherNotes: ''
 })
 
@@ -510,27 +555,58 @@ function saveDraft() {
 }
 
 function submitForm() {
-  if (!form.contact) {
-    ElMessage.warning('请填写联系方式')
+  // ⭐ 不再强制要求联系方式
+  if (!form.appName || !form.background) {
+    ElMessage.warning('请至少填写项目名称和背景')
+    currentStep.value = 0
     return
   }
   
   // 生成提交ID
   submissionId.value = 'REQ-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase()
   
-  // 保存到localStorage
-  const submissions = JSON.parse(localStorage.getItem('public_submissions') || '[]')
-  submissions.push({
+  // ⭐ 直接保存到需求池
+  const requirementPool = JSON.parse(localStorage.getItem('requirement-pool') || '[]')
+  const requirement = {
     id: submissionId.value,
+    submittedAt: new Date().toISOString(),
+    status: 'pending',
     data: { ...form },
-    submittedAt: new Date().toISOString()
-  })
-  localStorage.setItem('public_submissions', JSON.stringify(submissions))
+    projectId: null,
+    notes: '',
+    tags: [],
+    quickInfo: {
+      appName: form.appName || '未命名项目',
+      budget: form.budget || null,
+      contact: form.contact ? maskContact(form.contact) : null,
+      expectedTime: form.expectedTime || null,
+      hasContact: !!form.contact,
+      hasBudget: !!form.budget,
+      hasTime: !!form.expectedTime
+    }
+  }
+  
+  requirementPool.unshift(requirement)
+  localStorage.setItem('requirement-pool', JSON.stringify(requirementPool))
   
   // 清除草稿
   localStorage.removeItem('public_requirement_draft')
   
   submitSuccess.value = true
+}
+
+// ⭐ 新增：遮蔽联系方式
+function maskContact(contact) {
+  if (!contact) return null
+  // 手机号：138****8888
+  if (/^1\d{10}$/.test(contact)) {
+    return contact.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
+  }
+  // 其他：显示前3位和最后2位
+  if (contact.length > 5) {
+    return contact.slice(0, 3) + '****' + contact.slice(-2)
+  }
+  return contact
 }
 
 function copySubmissionId() {

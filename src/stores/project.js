@@ -14,21 +14,55 @@ export const useProjectStore = defineStore('project', () => {
     return projects.value.find(p => p.id === currentProjectId.value)
   })
   
-  // 创建新项目
+  // 创建新项目（保留但不推荐使用）
   function createProject(name) {
     const project = {
       id: Date.now().toString(),
       name,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      requirementId: null,  // 关联的需求ID
       requirement: null,
       prdClient: null,
       prdDev: null,
-      checklistProgress: {}
+      checklistProgress: {},
+      status: 'requirement'  // requirement | prd-generated | in-development
     }
     projects.value.unshift(project)
     currentProjectId.value = project.id
     return project
+  }
+  
+  // ⭐ 新增：从需求池创建项目（推荐使用）
+  function createProjectFromRequirement(requirement) {
+    const project = {
+      id: `project-${Date.now()}`,
+      name: requirement.data.appName || '未命名项目',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      requirementId: requirement.id,  // 关联需求ID
+      requirement: requirement.data,  // 完整需求数据
+      prdClient: null,
+      prdDev: null,
+      checklistProgress: {},
+      status: 'requirement',
+      
+      // 快速信息
+      quickInfo: {
+        contact: requirement.quickInfo.contact,
+        budget: requirement.data.budget,
+        expectedTime: requirement.data.expectedTime
+      }
+    }
+    projects.value.unshift(project)
+    currentProjectId.value = project.id
+    return project
+  }
+  
+  // ⭐ 新增：设置当前项目
+  function setCurrentProject(id) {
+    currentProjectId.value = id
+    localStorage.setItem('current_project_id', id)
   }
   
   // 更新项目
@@ -115,6 +149,8 @@ export const useProjectStore = defineStore('project', () => {
     currentProjectId,
     currentProject,
     createProject,
+    createProjectFromRequirement,  // ⭐ 新增
+    setCurrentProject,  // ⭐ 新增
     updateProject,
     deleteProject,
     selectProject,

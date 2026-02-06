@@ -8,10 +8,10 @@ const routes = [
     meta: { title: '项目首页' }
   },
   {
-    path: '/requirement',
-    name: 'Requirement',
-    component: () => import('@/views/RequirementForm.vue'),
-    meta: { title: '需求收集' }
+    path: '/requirement-pool',  // ⭐ 新增：需求池
+    name: 'RequirementPool',
+    component: () => import('@/views/RequirementPool.vue'),
+    meta: { title: '需求池' }
   },
   {
     path: '/public-form',
@@ -36,12 +36,6 @@ const routes = [
     name: 'Checklist',
     component: () => import('@/views/Checklist.vue'),
     meta: { title: '检查清单' }
-  },
-  {
-    path: '/submissions',
-    name: 'Submissions',
-    component: () => import('@/views/Submissions.vue'),
-    meta: { title: '客户提交' }
   },
   {
     path: '/settings',
