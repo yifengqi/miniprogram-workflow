@@ -32,6 +32,10 @@
                   <el-icon><Edit /></el-icon>
                   重命名
                 </el-dropdown-item>
+                <el-dropdown-item command="share">
+                  <el-icon><Share /></el-icon>
+                  分享需求表单
+                </el-dropdown-item>
                 <el-dropdown-item command="delete" divided>
                   <el-icon><Delete /></el-icon>
                   删除
@@ -144,6 +148,43 @@
         </el-button>
       </template>
     </el-dialog>
+    
+    <!-- 分享弹窗 -->
+    <el-dialog v-model="showShareDialog" title="分享需求收集表单" width="500px">
+      <div class="share-dialog-content">
+        <div class="share-actions">
+          <el-button type="primary" @click="copyShareLink" style="width: 100%">
+            <el-icon><Link /></el-icon>
+            复制表单链接
+          </el-button>
+          <el-button @click="generateShareQRCode" style="width: 100%">
+            <el-icon><PictureRounded /></el-icon>
+            生成二维码
+          </el-button>
+        </div>
+        
+        <div v-if="showQRCode" class="qrcode-section">
+          <div ref="qrcodeContainer" class="qrcode-container"></div>
+          <p class="qrcode-hint">客户扫码即可填写需求</p>
+          <el-button type="primary" @click="downloadQRCode" style="width: 100%">
+            <el-icon><Download /></el-icon>
+            下载二维码
+          </el-button>
+        </div>
+        
+        <el-alert 
+          type="info" 
+          :closable="false"
+          style="margin-top: 16px"
+        >
+          <template #title>
+            <div style="font-size: 13px;">
+              分享此链接给客户，他们可以直接在线填写需求，无需登录系统
+            </div>
+          </template>
+        </el-alert>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -151,7 +192,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MoreFilled } from '@element-plus/icons-vue'
+import { MoreFilled, Link, PictureRounded, Download, Share, Edit, Delete } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 
 const router = useRouter()
@@ -163,6 +204,13 @@ const newProjectName = ref('')
 const showRenameDialog = ref(false)
 const renameValue = ref('')
 const renameProjectId = ref(null)
+
+const showShareDialog = ref(false)
+const shareProjectId = ref(null)
+const showQRCode = ref(false)
+const qrcodeContainer = ref(null)
+
+const publicFormUrl = window.location.origin + '/public-form'
 
 function formatTime(isoString) {
   if (!isoString) return ''
@@ -194,6 +242,10 @@ function handleCommand(command, project) {
     renameProjectId.value = project.id
     renameValue.value = project.name
     showRenameDialog.value = true
+  } else if (command === 'share') {
+    shareProjectId.value = project.id
+    showQRCode.value = false
+    showShareDialog.value = true
   } else if (command === 'delete') {
     ElMessageBox.confirm('确定要删除这个项目吗？删除后无法恢复。', '删除确认', {
       type: 'warning',
@@ -203,6 +255,55 @@ function handleCommand(command, project) {
       projectStore.deleteProject(project.id)
       ElMessage.success('项目已删除')
     }).catch(() => {})
+  }
+}
+
+function copyShareLink() {
+  navigator.clipboard.writeText(publicFormUrl)
+  ElMessage.success('表单链接已复制到剪贴板')
+}
+
+async function generateShareQRCode() {
+  showQRCode.value = true
+  
+  // 等待DOM更新
+  await new Promise(resolve => setTimeout(resolve, 100))
+  
+  // 动态加载 qrcode 库
+  if (!window.QRCode) {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'
+    script.onload = () => {
+      renderQRCode()
+    }
+    document.head.appendChild(script)
+  } else {
+    renderQRCode()
+  }
+}
+
+function renderQRCode() {
+  if (qrcodeContainer.value) {
+    qrcodeContainer.value.innerHTML = ''
+    new window.QRCode(qrcodeContainer.value, {
+      text: publicFormUrl,
+      width: 256,
+      height: 256,
+      colorDark: '#000000',
+      colorLight: '#ffffff'
+    })
+  }
+}
+
+function downloadQRCode() {
+  const canvas = qrcodeContainer.value?.querySelector('canvas')
+  if (canvas) {
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '需求收集表单二维码.png'
+    a.click()
+    ElMessage.success('二维码已下载')
   }
 }
 
@@ -222,6 +323,39 @@ function renameProject() {
 
 .quick-actions {
   margin-bottom: 24px;
+}
+
+/* 分享弹窗 */
+.share-dialog-content {
+  padding: 8px 0;
+}
+
+.share-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.qrcode-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.qrcode-container {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.qrcode-hint {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0 0 16px 0;
 }
 
 .project-grid {
