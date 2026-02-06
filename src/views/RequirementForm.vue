@@ -66,7 +66,7 @@
           返回项目列表
         </el-button>
         <h1 class="page-title">需求收集</h1>
-        <p class="page-desc">当前项目：{{ selectedProject.name }}</p>
+        <p class="page-desc">当前项目：{{ selectedProject?.name || '' }}</p>
       </div>
       
       <!-- 步骤指示器 -->
@@ -431,7 +431,6 @@
         </div>
         <div class="preview-content markdown-preview" v-html="previewHtml"></div>
       </div>
-    </template>
     </div>
     
     <!-- 二维码弹窗 -->
