@@ -525,3 +525,237 @@ ${demoCode.setup?.notes?.map(note => `- ${note}`).join('\n') || ''}
 生成时间：${new Date().toLocaleString('zh-CN')}
 `
 }
+
+/**
+ * 分析用户反馈
+ * @param {Object} feedback - 用户反馈
+ * @param {Object} project - 项目信息
+ * @param {Array} experiences - 相关历史经验
+ * @returns {Promise<Object>} 分析结果
+ */
+export async function analyzeFeedback(feedback, project, experiences = []) {
+  let experienceContext = ''
+  if (experiences.length > 0) {
+    experienceContext = '\n\n【相关历史经验】\n'
+    experienceContext += experiences.slice(0, 3).map((exp, index) => {
+      return `${index + 1}. 项目：${exp.projectName}\n问题：${exp.analysis?.keyIssues?.[0]?.title || '无'}\n解决：${exp.analysis?.solutions?.[0]?.approach || '无'}\n`
+    }).join('\n')
+  }
+  
+  const prompt = `你是一个资深的软件问题分析专家，请分析以下用户反馈并给出详细的诊断结果。
+
+**项目信息**：
+- 项目名称：${project.name}
+- 项目类型：${project.requirement?.appType?.join('、') || '未知'}
+
+**用户反馈**：
+- 问题类型：${feedback.type}
+- 严重程度：${feedback.severity}
+- 问题描述：${feedback.description}
+${feedback.expectedBehavior ? `- 期望行为：${feedback.expectedBehavior}` : ''}
+${feedback.actualBehavior ? `- 实际行为：${feedback.actualBehavior}` : ''}
+${experienceContext}
+
+请按以下JSON格式输出分析结果：
+{
+  "category": "logic | ui | performance | data | api | config",
+  "rootCause": "根本原因的详细分析",
+  "affectedFiles": ["可能受影响的文件路径1", "文件路径2"],
+  "estimatedComplexity": "simple | medium | complex",
+  "priority": 1-5,
+  "tags": ["标签1", "标签2"],
+  "relatedExperiences": ["相关经验的关键点"]
+}
+
+**分析要点**：
+1. 准确分类问题类别
+2. 深入分析根本原因，不仅仅是表面现象
+3. 列出所有可能受影响的文件
+4. 评估修复复杂度
+5. 参考历史经验，避免重复问题
+`
+
+  const messages = [
+    {
+      role: 'system',
+      content: '你是一个资深的软件问题分析专家，擅长快速定位问题根源并给出专业建议。'
+    },
+    {
+      role: 'user',
+      content: prompt
+    }
+  ]
+  
+  const response = await callAI(messages, {
+    temperature: 0.3,  // 分析要求准确
+    maxTokens: 2048
+  })
+  
+  // 解析JSON
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    } else {
+      throw new Error('AI返回的分析结果不是有效的JSON格式')
+    }
+  } catch (error) {
+    console.error('解析分析结果失败:', error)
+    throw new Error('分析结果格式有误，请重试')
+  }
+}
+
+/**
+ * 生成优化方案
+ * @param {Object} feedback - 用户反馈
+ * @param {Object} analysis - 分析结果
+ * @param {Object} demoCode - 当前代码
+ * @param {Array} experiences - 相关经验
+ * @returns {Promise<Object>} 优化方案
+ */
+export async function generateSolution(feedback, analysis, demoCode, experiences = []) {
+  let experienceContext = ''
+  if (experiences.length > 0) {
+    experienceContext = '\n\n【参考历史经验】\n'
+    experienceContext += experiences.slice(0, 3).map((exp, index) => {
+      return `${index + 1}. ${exp.projectName}\n解决方案：${exp.analysis?.solutions?.[0]?.approach || '无'}\n代码改动：${exp.analysis?.solutions?.[0]?.implementation || '无'}\n`
+    }).join('\n')
+  }
+  
+  // 获取相关文件内容
+  let affectedFilesContent = ''
+  if (analysis.affectedFiles && analysis.affectedFiles.length > 0) {
+    affectedFilesContent = '\n\n【当前代码】\n'
+    analysis.affectedFiles.forEach(filePath => {
+      const file = demoCode.files?.find(f => f.path === filePath)
+      if (file) {
+        affectedFilesContent += `\n文件：${filePath}\n\`\`\`${file.type}\n${file.content}\n\`\`\`\n`
+      }
+    })
+  }
+  
+  const prompt = `你是一个资深的软件开发专家，请根据问题分析生成详细的优化方案。
+
+**问题分析**：
+- 问题类别：${analysis.category}
+- 根本原因：${analysis.rootCause}
+- 影响文件：${analysis.affectedFiles?.join(', ')}
+- 复杂度：${analysis.estimatedComplexity}
+
+**用户反馈**：
+${feedback.description}
+${affectedFilesContent}
+${experienceContext}
+
+请按以下JSON格式输出优化方案：
+{
+  "approach": "整体解决思路和方案描述",
+  "codeChanges": [
+    {
+      "file": "文件路径",
+      "type": "modify | add | delete",
+      "before": "修改前的代码（如果是modify）",
+      "after": "修改后的完整代码",
+      "explanation": "为什么这样改，改了什么",
+      "lineNumbers": "影响的行号范围（如 50-65）"
+    }
+  ],
+  "testPlan": "如何测试这个改动，验证修复是否成功",
+  "risks": ["潜在风险1", "潜在风险2"],
+  "estimatedTime": "预计改动耗时（分钟）",
+  "bestPractices": ["最佳实践建议1", "建议2"]
+}
+
+**要求**：
+1. 代码改动要完整、可直接应用
+2. 必须包含详细的改动说明
+3. 考虑边界情况和错误处理
+4. 参考历史经验，采用成熟方案
+5. 提供具体的测试计划
+`
+
+  const messages = [
+    {
+      role: 'system',
+      content: '你是一个资深的软件开发专家，擅长设计优雅的解决方案并编写高质量代码。'
+    },
+    {
+      role: 'user',
+      content: prompt
+    }
+  ]
+  
+  const response = await callAI(messages, {
+    temperature: 0.4,
+    maxTokens: 8192
+  })
+  
+  // 解析JSON
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    } else {
+      throw new Error('AI返回的方案不是有效的JSON格式')
+    }
+  } catch (error) {
+    console.error('解析优化方案失败:', error)
+    throw new Error('优化方案格式有误，请重试')
+  }
+}
+
+/**
+ * 生成迭代说明文档
+ * @param {Object} iteration - 迭代记录
+ * @returns {Promise<string>} 迭代说明文档
+ */
+export async function generateIterationDoc(iteration) {
+  const prompt = `请根据以下迭代信息生成一份清晰的版本更新说明文档（Markdown格式）。
+
+**版本信息**：
+- 版本号：${iteration.version}
+- 更新时间：${new Date(iteration.completedAt || iteration.createdAt).toLocaleString('zh-CN')}
+
+**问题反馈**：
+- 类型：${iteration.feedback.type}
+- 严重程度：${iteration.feedback.severity}
+- 描述：${iteration.feedback.description}
+
+**问题分析**：
+${iteration.analysis ? `- 类别：${iteration.analysis.category}
+- 原因：${iteration.analysis.rootCause}` : '无'}
+
+**解决方案**：
+${iteration.solution ? `- 方案：${iteration.solution.approach}
+- 改动文件：${iteration.solution.codeChanges?.length || 0} 个` : '无'}
+
+**改动结果**：
+${iteration.result ? `- 修改文件：${iteration.result.filesModified} 个
+- 代码行数：${iteration.result.linesChanged || 0} 行` : '无'}
+
+请生成一份专业的版本更新说明，包含：
+1. 版本号和更新时间
+2. 主要改动内容
+3. 修复的问题
+4. 新增的功能（如果有）
+5. 注意事项（如果有）
+
+格式要求：清晰、简洁、用户友好。
+`
+
+  const messages = [
+    {
+      role: 'system',
+      content: '你是一个技术文档专家，擅长编写清晰易懂的版本更新说明。'
+    },
+    {
+      role: 'user',
+      content: prompt
+    }
+  ]
+  
+  return await callAI(messages, {
+    temperature: 0.5,
+    maxTokens: 2048
+  })
+}

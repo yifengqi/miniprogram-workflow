@@ -1,10 +1,11 @@
 import { ElMessage, ElNotification } from 'element-plus'
-import { callAI, generateClientPRD, generateDevPRD, generateDemoCode, generateGitHubConfig } from '@/api/ai'
+import { callAI, generateClientPRD, generateDevPRD, generateDemoCode, generateGitHubConfig, analyzeFeedback, generateSolution } from '@/api/ai'
 import { useProjectStore } from '@/stores/project'
 import { useRequirementPoolStore } from '@/stores/requirementPool'
 import { useExperienceStore } from '@/stores/experience'
+import { useIterationStore } from '@/stores/iteration'  // ⭐ 新增
 import { aiNotification } from './aiNotification'
-import { githubService } from './github'  // ⭐ 新增
+import { githubService } from './github'
 
 /**
  * AI任务队列
@@ -131,6 +132,14 @@ class AITaskQueue {
         
       case 'analyze_feedback':
         await this.taskAnalyzeFeedback(project, task)
+        break
+        
+      case 'generate_solution':  // ⭐ Phase 3
+        await this.taskGenerateSolution(project, task)
+        break
+        
+      case 'apply_iteration':  // ⭐ Phase 3
+        await this.taskApplyIteration(project, task)
         break
         
       case 'run_checklist':
@@ -386,6 +395,279 @@ class AITaskQueue {
       message: `正在运行非功能性检查...`,
       type: 'info'
     })
+  }
+  
+  /**
+   * 分析反馈任务 ⭐ Phase 3
+   */
+  async taskAnalyzeFeedback(project, task) {
+    const projectStore = useProjectStore()
+    const experienceStore = useExperienceStore()
+    const iterationStore = useIterationStore()
+    
+    const { iterationId, feedback } = task.options
+    
+    // ⭐ 通知开始
+    aiNotification.taskStart(
+      task.id,
+      '🔍 开始分析反馈',
+      `正在分析「${project.name}」的用户反馈...`
+    )
+    
+    try {
+      // 1. 获取相关经验（使用标签索引优化）
+      const tags = [
+        `issue:${feedback.type}`,
+        `stage:iteration`,
+        `type:${project.requirement?.appType}`
+      ]
+      
+      const experiences = experienceStore.getRelevantExperiences({
+        tags,
+        projectType: project.requirement?.appType,
+        stage: 'iteration'
+      })
+      
+      console.log(`📊 查找相关修复经验: ${experiences.length}条`)
+      
+      // 2. AI分析
+      const analysis = await analyzeFeedback(feedback, project, experiences.slice(0, 3))
+      
+      // 3. 保存分析结果
+      iterationStore.saveAnalysis(iterationId, analysis)
+      
+      // 4. 记录到经验库
+      experienceStore.logProjectStage(project.id, 'iteration_analyzed', {
+        iterationId,
+        category: analysis.category,
+        complexity: analysis.estimatedComplexity
+      })
+      
+      // ⭐ 通知完成
+      aiNotification.taskComplete(
+        task.id,
+        '✅ 反馈分析完成',
+        `问题类别：${analysis.category}，复杂度：${analysis.estimatedComplexity}`
+      )
+      
+      // 5. 自动触发方案生成
+      if (project.autoMode !== false) {
+        this.addTask(project.id, 'generate_solution', 'high', { iterationId })
+      }
+      
+    } catch (error) {
+      console.error('分析反馈失败:', error)
+      iterationStore.failIteration(iterationId, error.message)
+      
+      aiNotification.taskError(
+        task.id,
+        '❌ 分析失败',
+        error.message
+      )
+      throw error
+    }
+  }
+  
+  /**
+   * 生成方案任务 ⭐ Phase 3
+   */
+  async taskGenerateSolution(project, task) {
+    const projectStore = useProjectStore()
+    const experienceStore = useExperienceStore()
+    const iterationStore = useIterationStore()
+    
+    const { iterationId } = task.options
+    const iteration = iterationStore.getIteration(iterationId)
+    
+    if (!iteration || !iteration.analysis) {
+      throw new Error('迭代记录或分析结果不存在')
+    }
+    
+    // ⭐ 通知开始
+    aiNotification.taskStart(
+      task.id,
+      '💡 开始生成优化方案',
+      `正在为「${project.name}」设计解决方案...`
+    )
+    
+    try {
+      // 1. 获取当前代码
+      const demoCode = project.demoCode
+      if (!demoCode) {
+        throw new Error('项目尚未生成Demo代码')
+      }
+      
+      // 2. 获取相关修复经验
+      const tags = [
+        `fix:${iteration.analysis.category}`,
+        'stage:iteration'
+      ]
+      
+      const experiences = experienceStore.getRelevantExperiences({
+        tags,
+        stage: 'iteration'
+      })
+      
+      console.log(`📊 查找相关修复方案: ${experiences.length}条`)
+      
+      // 3. AI生成方案
+      const solution = await generateSolution(
+        iteration.feedback,
+        iteration.analysis,
+        demoCode,
+        experiences.slice(0, 3)
+      )
+      
+      // 4. 保存方案
+      iterationStore.saveSolution(iterationId, solution)
+      
+      // 5. 记录到经验库
+      experienceStore.logProjectStage(project.id, 'solution_generated', {
+        iterationId,
+        codeChanges: solution.codeChanges?.length || 0,
+        estimatedTime: solution.estimatedTime
+      })
+      
+      // ⭐ 通知完成
+      aiNotification.taskComplete(
+        task.id,
+        '✅ 优化方案已生成',
+        `需改动${solution.codeChanges?.length || 0}个文件，请查看并确认`
+      )
+      
+      ElNotification({
+        title: '💡 方案已就绪',
+        message: `AI已生成优化方案，请在迭代管理页面查看并确认应用`,
+        type: 'success',
+        duration: 8000
+      })
+      
+    } catch (error) {
+      console.error('生成方案失败:', error)
+      iterationStore.failIteration(iterationId, error.message)
+      
+      aiNotification.taskError(
+        task.id,
+        '❌ 方案生成失败',
+        error.message
+      )
+      throw error
+    }
+  }
+  
+  /**
+   * 应用迭代任务 ⭐ Phase 3
+   */
+  async taskApplyIteration(project, task) {
+    const projectStore = useProjectStore()
+    const experienceStore = useExperienceStore()
+    const iterationStore = useIterationStore()
+    
+    const { iterationId } = task.options
+    const iteration = iterationStore.getIteration(iterationId)
+    
+    if (!iteration || !iteration.solution) {
+      throw new Error('迭代记录或优化方案不存在')
+    }
+    
+    // ⭐ 通知开始
+    aiNotification.taskStart(
+      task.id,
+      '⚙️ 开始应用优化',
+      `正在应用「${iteration.version}」的代码改动...`
+    )
+    
+    try {
+      // 1. 应用代码改动
+      const demoCode = { ...project.demoCode }
+      let modifiedCount = 0
+      let linesChanged = 0
+      
+      iteration.solution.codeChanges.forEach(change => {
+        const fileIndex = demoCode.files.findIndex(f => f.path === change.file)
+        
+        if (change.type === 'modify' && fileIndex !== -1) {
+          // 修改文件
+          demoCode.files[fileIndex].content = change.after
+          modifiedCount++
+          
+          // 估算改动行数
+          const beforeLines = change.before?.split('\n').length || 0
+          const afterLines = change.after?.split('\n').length || 0
+          linesChanged += Math.abs(afterLines - beforeLines)
+          
+        } else if (change.type === 'add') {
+          // 新增文件
+          demoCode.files.push({
+            path: change.file,
+            type: change.file.split('.').pop(),
+            content: change.after,
+            description: change.explanation
+          })
+          modifiedCount++
+          linesChanged += change.after?.split('\n').length || 0
+          
+        } else if (change.type === 'delete' && fileIndex !== -1) {
+          // 删除文件
+          linesChanged += demoCode.files[fileIndex].content?.split('\n').length || 0
+          demoCode.files.splice(fileIndex, 1)
+          modifiedCount++
+        }
+      })
+      
+      // 2. 更新项目代码和版本
+      projectStore.updateProject(project.id, {
+        demoCode,
+        version: iteration.version
+      })
+      
+      // 3. 推送到GitHub
+      if (githubService.isConfigured() && project.githubRepo) {
+        aiNotification.taskProgress(
+          task.id,
+          '正在推送到GitHub...',
+          80
+        )
+        
+        await this.pushToGitHub(project, demoCode)
+      }
+      
+      // 4. 记录经验
+      experienceStore.recordIterationExperience(project.id, iteration)
+      
+      // 5. 完成迭代
+      iterationStore.completeIteration(iterationId, {
+        filesModified: modifiedCount,
+        linesChanged,
+        newVersion: iteration.version,
+        deployedAt: new Date().toISOString()
+      })
+      
+      // ⭐ 通知完成
+      aiNotification.taskComplete(
+        task.id,
+        '🎉 迭代优化完成',
+        `已升级到${iteration.version}，改动${modifiedCount}个文件`
+      )
+      
+      ElNotification({
+        title: '🎉 版本升级成功',
+        message: `${iteration.version}已发布！改动了${modifiedCount}个文件，${linesChanged}行代码`,
+        type: 'success',
+        duration: 8000
+      })
+      
+    } catch (error) {
+      console.error('应用迭代失败:', error)
+      iterationStore.failIteration(iterationId, error.message)
+      
+      aiNotification.taskError(
+        task.id,
+        '❌ 应用失败',
+        error.message
+      )
+      throw error
+    }
   }
   
   /**

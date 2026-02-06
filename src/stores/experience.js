@@ -592,6 +592,97 @@ ${JSON.stringify(projectData, null, 2)}
       return Math.round((end - start) / (1000 * 60 * 60)) // 小时
     },
     
+    // ⭐ 记录迭代经验 (Phase 3)
+    recordIterationExperience(projectId, iteration) {
+      const projectStore = useProjectStore()
+      const project = projectStore.getProjectById(projectId)
+      
+      if (!project) return
+      
+      // 创建经验记录
+      const experience = {
+        id: `exp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: new Date().toISOString(),
+        projectId,
+        projectName: project.name,
+        category: 'iteration',
+        
+        // 问题信息
+        issue: {
+          type: iteration.feedback.type,
+          severity: iteration.feedback.severity,
+          description: iteration.feedback.description,
+          category: iteration.analysis?.category
+        },
+        
+        // 解决方案
+        solution: {
+          before: '用户反馈的问题',
+          after: '应用优化方案后',
+          diff: `${iteration.solution?.codeChanges?.length || 0}个文件改动`,
+          approach: iteration.solution?.approach,
+          codeChanges: iteration.solution?.codeChanges?.length || 0
+        },
+        
+        // 分析结果
+        analysis: {
+          rootCause: iteration.analysis?.rootCause,
+          affectedFiles: iteration.analysis?.affectedFiles || [],
+          complexity: iteration.analysis?.estimatedComplexity,
+          
+          keyIssues: [{
+            title: iteration.feedback.description,
+            severity: iteration.feedback.severity,
+            category: iteration.analysis?.category
+          }],
+          
+          lessons: iteration.solution?.bestPractices || [],
+          
+          solutions: [{
+            approach: iteration.solution?.approach,
+            implementation: `改动${iteration.solution?.codeChanges?.length || 0}个文件`,
+            result: iteration.result?.filesModified ? '成功' : '待应用'
+          }],
+          
+          recommendations: iteration.solution?.risks?.map(r => `注意：${r}`) || []
+        },
+        
+        // 标签（自动生成）
+        tags: [
+          `type:${project.requirement?.appType}`,
+          `issue:${iteration.feedback.type}`,
+          `fix:${iteration.analysis?.category}`,
+          `stage:iteration`,
+          `severity:${iteration.feedback.severity}`
+        ],
+        
+        // 优先级
+        priority: iteration.analysis?.priority || 3,
+        mustRead: iteration.feedback.severity === 'critical' || iteration.feedback.severity === 'high',
+        
+        // 使用统计
+        useCount: 0,
+        effectiveCount: 0
+      }
+      
+      // 添加经验
+      this.experiences.push(experience)
+      
+      // 更新标签索引
+      this.updateTagsIndex(experience)
+      
+      // 如果是必读经验，添加到列表
+      if (experience.mustRead) {
+        this.mustReadExperiences.push(experience.id)
+      }
+      
+      this.saveToStorage()
+      
+      console.log(`📚 迭代经验已记录: ${experience.id}`)
+      
+      return experience
+    },
+    
     // 清空所有数据
     clearAll() {
       this.experiences = []
