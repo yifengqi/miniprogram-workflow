@@ -57,6 +57,11 @@
             <span>经验知识库</span>
           </el-menu-item>
           
+          <el-menu-item index="/experience-dashboard">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>经验管理</span>
+          </el-menu-item>
+          
           <el-menu-item index="/checklist">
             <el-icon><Finished /></el-icon>
             <span>检查清单</span>

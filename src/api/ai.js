@@ -260,19 +260,40 @@ export const PRD_PROMPTS = {
  * @returns {Promise<string>} PRD内容
  */
 export async function generateClientPRD(requirement, options = {}) {
-  // 🔴 构建经验上下文
+  // 🔴 构建经验上下文（优化版）
   let experienceContext = ''
   if (options.experiences && options.experiences.length > 0) {
-    experienceContext = '\n\n【历史经验参考】\n'
-    experienceContext += options.experiences.map(exp => {
-      return `项目：${exp.projectName}
+    // ⭐ 只使用前3条最相关的经验（三层筛选后的结果）
+    const topExperiences = options.experiences.slice(0, 3)
+    
+    experienceContext = '\n\n【历史经验参考】（已通过标签索引优化查询）\n'
+    experienceContext += topExperiences.map((exp, index) => {
+      // ⭐ 标记必读经验
+      const mustReadTag = exp.mustRead ? '【⭐必读】' : ''
+      const priorityTag = `[优先级:${exp.priority}/5]`
+      
+      return `${index + 1}. ${mustReadTag}${priorityTag} 项目：${exp.projectName}
 问题：${exp.analysis?.keyIssues?.[0]?.title || '无'}
 教训：${exp.analysis?.lessons?.[0] || '无'}
 建议：${exp.analysis?.recommendations?.[0] || '无'}
+使用次数：${exp.useCount || 0}次
 `
     }).join('\n---\n')
     
-    experienceContext += '\n请参考以上经验，避免类似问题。\n'
+    experienceContext += '\n⚠️ 特别注意标记为【必读】的经验，这些是关键教训！\n'
+    experienceContext += '💡 请参考以上经验，避免类似问题。\n'
+    
+    // ⭐ 增加使用次数
+    if (options.updateUseCount !== false) {
+      const experienceStore = useExperienceStore()
+      topExperiences.forEach(exp => {
+        const found = experienceStore.experiences.find(e => e.id === exp.id)
+        if (found) {
+          found.useCount = (found.useCount || 0) + 1
+        }
+      })
+      experienceStore.saveToStorage()
+    }
   }
   
   const messages = [

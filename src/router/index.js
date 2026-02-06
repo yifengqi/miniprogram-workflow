@@ -32,6 +32,12 @@ const routes = [
     meta: { title: '经验知识库' }
   },
   {
+    path: '/experience-dashboard',  // ⭐ 新增：经验管理
+    name: 'ExperienceDashboard',
+    component: () => import('@/views/ExperienceDashboard.vue'),
+    meta: { title: '经验管理' }
+  },
+  {
     path: '/checklist',
     name: 'Checklist',
     component: () => import('@/views/Checklist.vue'),

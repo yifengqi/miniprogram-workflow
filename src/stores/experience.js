@@ -5,7 +5,9 @@ export const useExperienceStore = defineStore('experience', {
   state: () => ({
     experiences: [],      // 所有经验条目
     projectLogs: {},      // 每个项目的完整日志
-    intelligentRules: []  // 智能提示规则
+    intelligentRules: [], // 智能提示规则
+    tagsIndex: {},        // ⭐ 标签索引字典
+    mustReadExperiences: [] // ⭐ 必读经验列表
   }),
   
   getters: {
@@ -14,20 +16,54 @@ export const useExperienceStore = defineStore('experience', {
       return state.projectLogs[projectId]
     },
     
-    // 获取相关经验
+    // ⭐ 优化：使用标签索引快速查找相关经验
     getRelevantExperiences: (state) => (criteria) => {
-      return state.experiences.filter(exp => {
-        if (criteria.projectType && exp.project?.type !== criteria.projectType) {
-          return false
+      // 第一层：标签快速定位（O(1)）
+      let candidates = []
+      
+      if (criteria.tags && criteria.tags.length > 0) {
+        // 使用标签索引快速查找
+        const taggedExps = new Set()
+        criteria.tags.forEach(tag => {
+          if (state.tagsIndex[tag]) {
+            state.tagsIndex[tag].forEach(expId => taggedExps.add(expId))
+          }
+        })
+        candidates = Array.from(taggedExps).map(id => 
+          state.experiences.find(exp => exp.id === id)
+        ).filter(Boolean)
+      } else if (criteria.projectType) {
+        // 按项目类型查找
+        const typeTag = `type:${criteria.projectType}`
+        if (state.tagsIndex[typeTag]) {
+          candidates = state.tagsIndex[typeTag].map(id =>
+            state.experiences.find(exp => exp.id === id)
+          ).filter(Boolean)
         }
-        if (criteria.stage && exp.stage !== criteria.stage) {
-          return false
+      } else {
+        candidates = [...state.experiences]
+      }
+      
+      // 第二层：重要性筛选
+      // 优先返回必读经验
+      const mustRead = candidates.filter(exp => exp.mustRead)
+      const others = candidates.filter(exp => !exp.mustRead)
+      
+      // 第三层：相关度排序
+      const sorted = [...mustRead, ...others].sort((a, b) => {
+        // 优先级排序
+        if (a.priority !== b.priority) {
+          return (b.priority || 0) - (a.priority || 0)
         }
-        if (criteria.tags && !criteria.tags.some(tag => exp.tags?.includes(tag))) {
-          return false
+        // 使用频率排序
+        if (a.useCount !== b.useCount) {
+          return (b.useCount || 0) - (a.useCount || 0)
         }
-        return true
+        // 时间排序（新的优先）
+        return new Date(b.timestamp) - new Date(a.timestamp)
       })
+      
+      return sorted
     },
     
     // 统计数据
@@ -59,10 +95,83 @@ export const useExperienceStore = defineStore('experience', {
           this.intelligentRules = JSON.parse(rules)
         }
         
+        // ⭐ 加载标签索引
+        const tagsIndex = localStorage.getItem('tags-index')
+        if (tagsIndex) {
+          this.tagsIndex = JSON.parse(tagsIndex)
+        } else {
+          // 首次加载，构建索引
+          this.rebuildTagsIndex()
+        }
+        
+        // ⭐ 加载必读经验列表
+        const mustRead = localStorage.getItem('must-read-experiences')
+        if (mustRead) {
+          this.mustReadExperiences = JSON.parse(mustRead)
+        }
+        
+        // ⭐ 如果没有规则，添加默认规则（演示用）
+        if (this.intelligentRules.length === 0) {
+          this.initializeDefaultRules()
+        }
+        
         console.log('📚 经验库已加载:', this.stats)
+        console.log('🏷️ 标签索引:', Object.keys(this.tagsIndex).length, '个标签')
+        console.log('⭐ 必读经验:', this.mustReadExperiences.length, '条')
       } catch (error) {
         console.error('加载经验库失败:', error)
       }
+    },
+    
+    // ⭐ 初始化默认智能提示规则
+    initializeDefaultRules() {
+      const defaultRules = [
+        {
+          id: 'rule-default-1',
+          source: '系统内置',
+          projectName: '演示规则',
+          trigger: '抢票',
+          action: '检测到"抢票"关键词：建议明确说明是个人工具还是商业平台，并注意法律合规性',
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          hitCount: 0
+        },
+        {
+          id: 'rule-default-2',
+          source: '系统内置',
+          projectName: '演示规则',
+          trigger: '电商',
+          action: '检测到电商类项目：建议考虑支付流程、库存管理、订单状态、售后服务等功能',
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          hitCount: 0
+        },
+        {
+          id: 'rule-default-3',
+          source: '系统内置',
+          projectName: '演示规则',
+          trigger: '社区',
+          action: '检测到社区类项目：建议考虑内容审核、用户举报、敏感词过滤等功能，确保合规',
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          hitCount: 0
+        },
+        {
+          id: 'rule-default-4',
+          source: '系统内置',
+          projectName: '演示规则',
+          trigger: '预约',
+          action: '检测到预约类项目：建议明确预约规则（是否可取消、取消时限）、通知方式（短信/站内信）',
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          hitCount: 0
+        }
+      ]
+      
+      this.intelligentRules = defaultRules
+      this.saveToStorage()
+      
+      console.log('💡 已初始化默认智能提示规则')
     },
     
     // 保存到存储
@@ -71,6 +180,8 @@ export const useExperienceStore = defineStore('experience', {
         localStorage.setItem('experiences', JSON.stringify(this.experiences))
         localStorage.setItem('project-logs', JSON.stringify(this.projectLogs))
         localStorage.setItem('intelligent-rules', JSON.stringify(this.intelligentRules))
+        localStorage.setItem('tags-index', JSON.stringify(this.tagsIndex))  // ⭐ 保存索引
+        localStorage.setItem('must-read-experiences', JSON.stringify(this.mustReadExperiences))  // ⭐ 保存必读列表
       } catch (error) {
         console.error('保存经验库失败:', error)
       }
@@ -301,8 +412,17 @@ ${JSON.stringify(projectData, null, 2)}
   "recommendations": [
     "未来建议1",
     "未来建议2"
-  ]
+  ],
+  "tags": [
+    "标签1",
+    "标签2"
+  ],
+  "priority": 3
 }
+
+注意：
+- tags要包含：项目类型、问题类型、技术栈等关键词
+- priority是重要性评分（1-5），5最重要
 `
       
       try {
@@ -312,6 +432,15 @@ ${JSON.stringify(projectData, null, 2)}
         })
         
         const analysis = JSON.parse(aiResponse)
+        
+        // ⭐ 自动生成标签
+        const autoTags = [
+          `type:${project.requirement?.appType || '未知'}`,
+          `stage:prd_generation`,
+          ...log.issues.map(i => `issue:${i.category}`)
+        ]
+        
+        const allTags = [...new Set([...autoTags, ...(analysis.tags || [])])]
         
         // 保存经验
         const experience = {
@@ -323,13 +452,32 @@ ${JSON.stringify(projectData, null, 2)}
           analysis,
           rawLog: projectData,
           applied: false,
-          applyToFutureProjects: true
+          applyToFutureProjects: true,
+          
+          // ⭐ 新增字段
+          tags: allTags,                        // 标签列表
+          priority: analysis.priority || 3,     // 优先级 1-5
+          mustRead: analysis.priority >= 4,     // 是否必读
+          useCount: 0,                          // 使用次数
+          effectiveCount: 0                     // 有效次数（用户采纳）
         }
         
         this.experiences.push(experience)
+        
+        // ⭐ 更新标签索引
+        this.updateTagsIndex(experience)
+        
+        // ⭐ 如果是必读，加入必读列表
+        if (experience.mustRead) {
+          this.mustReadExperiences.push(experience.id)
+        }
+        
         this.saveToStorage()
         
         console.log('✅ 经验总结生成完成')
+        console.log('📊 标签:', allTags)
+        console.log('⭐ 优先级:', experience.priority)
+        console.log('📌 必读:', experience.mustRead)
         
         return experience
         
@@ -337,6 +485,30 @@ ${JSON.stringify(projectData, null, 2)}
         console.error('AI分析失败:', error)
         throw error
       }
+    },
+    
+    // ⭐ 更新标签索引
+    updateTagsIndex(experience) {
+      if (!experience.tags) return
+      
+      experience.tags.forEach(tag => {
+        if (!this.tagsIndex[tag]) {
+          this.tagsIndex[tag] = []
+        }
+        if (!this.tagsIndex[tag].includes(experience.id)) {
+          this.tagsIndex[tag].push(experience.id)
+        }
+      })
+    },
+    
+    // ⭐ 重建标签索引（用于数据迁移）
+    rebuildTagsIndex() {
+      this.tagsIndex = {}
+      this.experiences.forEach(exp => {
+        this.updateTagsIndex(exp)
+      })
+      this.saveToStorage()
+      console.log('🔄 标签索引已重建')
     },
     
     // 🔴 应用改进到系统

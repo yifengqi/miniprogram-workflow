@@ -155,23 +155,47 @@ class AITaskQueue {
       `正在为「${project.name}」生成客户版PRD...`
     )
     
-    // 🔴 应用历史经验
+    // 🔴 优化：使用标签索引快速查找相关经验
+    const projectType = project.requirement?.appType
+    const tags = [
+      `type:${projectType}`,
+      'stage:prd_generation'
+    ]
+    
+    // 三层筛选：标签定位 → 重要性 → 相关度
     const relevantExp = experienceStore.getRelevantExperiences({
-      projectType: project.requirement?.appType,
+      tags,
+      projectType,
       stage: 'prd_generation'
     })
     
+    console.log(`📊 经验查询优化：`)
+    console.log(`  - 使用标签: ${tags.join(', ')}`)
+    console.log(`  - 找到经验: ${relevantExp.length}条`)
+    console.log(`  - 必读经验: ${relevantExp.filter(e => e.mustRead).length}条`)
+    console.log(`  - 实际使用: ${Math.min(relevantExp.length, 3)}条（Top 3）`)
+    
     // ⭐ 通知应用经验
     if (relevantExp.length > 0) {
+      const mustReadCount = relevantExp.filter(e => e.mustRead).length
       aiNotification.experienceApplied(
         relevantExp.length,
         relevantExp.slice(0, 3)
       )
+      
+      if (mustReadCount > 0) {
+        ElNotification({
+          title: '⚠️ 重要提示',
+          message: `发现 ${mustReadCount} 条必读经验，AI将特别注意！`,
+          type: 'warning',
+          duration: 5000
+        })
+      }
     }
     
-    // 生成PRD
+    // 生成PRD（只传递前3条）
     const prdContent = await generateClientPRD(project.requirement, {
-      experiences: relevantExp.slice(0, 3)  // 最多应用3个相关经验
+      experiences: relevantExp.slice(0, 3)  // ⭐ 只用前3条
     })
     
     // 保存

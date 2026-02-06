@@ -25,6 +25,22 @@
     
     <!-- 表单区域 -->
     <div class="form-container card">
+      <!-- ⭐ 智能提示区域 -->
+      <div v-if="intelligentHints.length > 0" class="intelligent-hints">
+        <div 
+          v-for="(hint, index) in intelligentHints" 
+          :key="index"
+          class="hint-card"
+        >
+          <div class="hint-icon">💡</div>
+          <div class="hint-content">
+            <div class="hint-title">基于历史经验的建议</div>
+            <div class="hint-message">{{ hint.message }}</div>
+            <div class="hint-source">来源：{{ hint.source }}</div>
+          </div>
+        </div>
+      </div>
+      
       <!-- 步骤 1: 项目信息 -->
       <div v-show="currentStep === 0" class="form-step">
         <h3 class="step-title">一、项目基本信息</h3>
@@ -437,14 +453,20 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Phone, Wallet, Calendar } from '@element-plus/icons-vue'  // ⭐ 新增图标
+import { useExperienceStore } from '@/stores/experience'  // ⭐ 新增
+
+const experienceStore = useExperienceStore()  // ⭐ 新增
 
 const currentStep = ref(0)
 const submitSuccess = ref(false)
 const submissionId = ref('')
 const isMobile = ref(false)
+
+// ⭐ 智能提示
+const intelligentHints = ref([])
 
 // 表单数据
 const form = reactive({
@@ -482,6 +504,22 @@ const form = reactive({
   operationCost: '',
   otherNotes: ''
 })
+
+// ⭐ 监听表单变化，检查智能提示
+watch([() => form.background, () => form.appName, () => form.appType], () => {
+  checkIntelligentHints()
+}, { deep: true })
+
+// ⭐ 检查智能提示
+function checkIntelligentHints() {
+  const context = {
+    text: `${form.background} ${form.appName}`.toLowerCase(),
+    appType: form.appType,
+    stage: 'requirement_collection'
+  }
+  
+  intelligentHints.value = experienceStore.checkIntelligentHints(context)
+}
 
 onMounted(() => {
   // 检测是否是移动设备
@@ -678,6 +716,61 @@ function resetForm() {
 .form-container {
   margin-bottom: 24px;
   padding: 24px;
+}
+
+/* ⭐ 智能提示样式 */
+.intelligent-hints {
+  margin-bottom: 24px;
+}
+
+.hint-card {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.hint-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.hint-content {
+  flex: 1;
+}
+
+.hint-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3436;
+  margin-bottom: 4px;
+}
+
+.hint-message {
+  font-size: 14px;
+  color: #2d3436;
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+
+.hint-source {
+  font-size: 12px;
+  color: #636e72;
+  font-style: italic;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .form-step {
