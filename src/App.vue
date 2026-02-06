@@ -1,6 +1,16 @@
 <template>
   <div class="app-container dark">
-    <el-container class="main-container">
+    <!-- 公共页面：无导航栏布局 -->
+    <div v-if="isPublicPage" class="public-layout">
+      <router-view v-slot="{ Component }">
+        <transition name="fade" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
+    </div>
+    
+    <!-- 管理页面：带侧边栏布局 -->
+    <el-container v-else class="main-container">
       <!-- 侧边栏 -->
       <el-aside :width="isCollapse ? '64px' : '220px'" class="sidebar">
         <div class="logo">
@@ -30,6 +40,11 @@
           <el-menu-item index="/prd">
             <el-icon><EditPen /></el-icon>
             <span>PRD生成</span>
+          </el-menu-item>
+          
+          <el-menu-item index="/submissions">
+            <el-icon><MessageBox /></el-icon>
+            <span>客户提交</span>
           </el-menu-item>
           
           <el-menu-item index="/experience">
@@ -76,6 +91,7 @@ const route = useRoute()
 const isCollapse = ref(false)
 
 const currentRoute = computed(() => route.path)
+const isPublicPage = computed(() => route.meta?.public === true)
 </script>
 
 <style scoped>
@@ -83,6 +99,12 @@ const currentRoute = computed(() => route.path)
   width: 100vw;
   height: 100vh;
   background: var(--bg-primary);
+}
+
+.public-layout {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .main-container {

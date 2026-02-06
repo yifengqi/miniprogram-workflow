@@ -14,6 +14,12 @@ const routes = [
     meta: { title: '需求收集' }
   },
   {
+    path: '/public-form',
+    name: 'PublicRequirement',
+    component: () => import('@/views/PublicRequirement.vue'),
+    meta: { title: '需求收集表', public: true }
+  },
+  {
     path: '/prd',
     name: 'PRD',
     component: () => import('@/views/PRDGenerator.vue'),
@@ -30,6 +36,12 @@ const routes = [
     name: 'Checklist',
     component: () => import('@/views/Checklist.vue'),
     meta: { title: '检查清单' }
+  },
+  {
+    path: '/submissions',
+    name: 'Submissions',
+    component: () => import('@/views/Submissions.vue'),
+    meta: { title: '客户提交' }
   },
   {
     path: '/settings',

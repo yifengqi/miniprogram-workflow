@@ -65,6 +65,22 @@ export async function callAI(messages, options = {}) {
         })
       })
       
+      // 检查响应状态
+      if (!response.ok) {
+        const text = await response.text()
+        // 检查是否是HTML错误页面
+        if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+          throw new Error(`API请求失败 (${response.status}): 服务器返回了错误页面，请检查API端点URL是否正确`)
+        }
+        throw new Error(`API请求失败 (${response.status}): ${text}`)
+      }
+      
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        throw new Error(`API返回了非JSON格式数据，请检查API端点URL是否正确。返回内容: ${text.substring(0, 100)}`)
+      }
+      
       const data = await response.json()
       
       if (data.error) {
