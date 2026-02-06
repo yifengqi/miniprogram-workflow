@@ -252,3 +252,67 @@ export const PRD_PROMPTS = {
 项目信息：
 `
 }
+
+/**
+ * 生成客户版PRD
+ * @param {Object} requirement - 需求数据
+ * @param {Object} options - 选项（experiences: 相关经验）
+ * @returns {Promise<string>} PRD内容
+ */
+export async function generateClientPRD(requirement, options = {}) {
+  // 🔴 构建经验上下文
+  let experienceContext = ''
+  if (options.experiences && options.experiences.length > 0) {
+    experienceContext = '\n\n【历史经验参考】\n'
+    experienceContext += options.experiences.map(exp => {
+      return `项目：${exp.projectName}
+问题：${exp.analysis?.keyIssues?.[0]?.title || '无'}
+教训：${exp.analysis?.lessons?.[0] || '无'}
+建议：${exp.analysis?.recommendations?.[0] || '无'}
+`
+    }).join('\n---\n')
+    
+    experienceContext += '\n请参考以上经验，避免类似问题。\n'
+  }
+  
+  const messages = [
+    {
+      role: 'system',
+      content: '你是一个专业的产品经理，擅长将客户需求转化为清晰的产品文档。'
+    },
+    {
+      role: 'user',
+      content: PRD_PROMPTS.client + JSON.stringify(requirement, null, 2) + experienceContext
+    }
+  ]
+  
+  return await callAI(messages, {
+    temperature: 0.7,
+    maxTokens: 4096
+  })
+}
+
+/**
+ * 生成开发版PRD
+ * @param {Object} requirement - 需求数据
+ * @param {string} clientPRD - 客户版PRD内容
+ * @param {Object} options - 选项
+ * @returns {Promise<string>} PRD内容
+ */
+export async function generateDevPRD(requirement, clientPRD, options = {}) {
+  const messages = [
+    {
+      role: 'system',
+      content: '你是一个资深的技术产品经理，擅长将产品需求转化为详细的技术实现方案。'
+    },
+    {
+      role: 'user',
+      content: PRD_PROMPTS.dev + `\n\n原始需求：\n${JSON.stringify(requirement, null, 2)}\n\n客户版PRD：\n${clientPRD}`
+    }
+  ]
+  
+  return await callAI(messages, {
+    temperature: 0.5,  // 技术文档要求更严谨
+    maxTokens: 8192
+  })
+}

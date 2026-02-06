@@ -1,240 +1,434 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { callAI } from '@/api/ai'
 
-// 初始经验数据（来自星见项目）
-const initialExperiences = [
-  {
-    id: 'EXP-001',
-    title: '云函数SDK版本问题',
-    category: '云开发',
-    severity: 'critical',
-    problem: '云函数使用 wx-server-sdk 3.x 版本导致上传失败或运行时错误',
-    symptom: '上传云函数时报错，或运行时出现 [ACCESS_TOKEN_DISABLED] 错误，或云函数调用返回空结果',
-    cause: 'wx-server-sdk 3.x 版本与当前云开发环境不兼容',
-    solution: '在 package.json 中强制指定版本：\n"wx-server-sdk": "~2.6.3"',
-    benefit: '上传成功率: 0% → 100%',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-002',
-    title: '数据库权限问题',
-    category: '云开发',
-    severity: 'critical',
-    problem: '数据库权限配置不当导致读写失败',
-    symptom: '小程序端读取数据返回空数组，或写入数据报权限错误，或跨用户数据无法访问',
-    cause: '1. 权限配置过于严格 2. 权限配置过于宽松存在安全风险 3. 不理解 doc._openid 和 auth.openid 的区别',
-    solution: '读写分离策略：\n- 公开可读：{ "read": true, "write": false }\n- 仅自己可读：{ "read": "doc._openid == auth.openid", "write": false }\n- 所有写操作通过云函数进行',
-    benefit: '权限错误数: 5+次/项目 → 0次',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-003',
-    title: '隐私合规问题',
-    category: '合规',
-    severity: 'critical',
-    problem: '缺少隐私政策或用户协议导致审核不通过',
-    symptom: '小程序提交审核被驳回，驳回原因：缺少隐私政策/用户隐私保护指引未填写',
-    cause: '开发时忽略了合规要求',
-    solution: '1. 隐私弹窗：首次进入小程序时弹出\n2. 隐私政策页面：完整的隐私政策文档\n3. 用户协议页面：完整的服务条款\n4. 后台配置：填写用户隐私保护指引',
-    benefit: '审核通过率: 0% → 100%',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-004',
-    title: 'Web后台路由问题',
-    category: '部署',
-    severity: 'high',
-    problem: 'Web管理后台部署到子目录后页面空白或路由失效',
-    symptom: '访问管理后台显示空白页，或刷新页面后 404，或路由跳转失败',
-    cause: 'vite.config.js 的 base 和 router 的 history 路径不一致',
-    solution: '// vite.config.js\nbase: "/admin/"\n\n// router/index.js\nhistory: createWebHistory("/admin/")\n\n两者必须一致！',
-    benefit: '部署调试时间: 3小时 → 10分钟',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-005',
-    title: 'CSS变量问题',
-    category: '前端',
-    severity: 'medium',
-    problem: '不同模块使用的CSS变量名称不一致，导致样式异常',
-    symptom: '按钮文字颜色看不清（黑色背景+黑色文字），或样式在某些页面正常某些页面异常',
-    cause: '各模块独立开发时使用了不同的变量命名',
-    solution: '在 App.vue 中统一定义所有CSS变量，并创建兼容别名',
-    benefit: '样式调试时间: 1小时/页面 → 5分钟/页面',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-006',
-    title: '云函数配置问题',
-    category: '云开发',
-    severity: 'high',
-    problem: '云函数 config.json 格式错误导致上传或运行失败',
-    symptom: '云函数上传失败，或云函数运行时环境变量异常',
-    cause: 'config.json 包含了空的 env 字段或其他格式问题',
-    solution: '正确的 config.json 格式：\n{\n  "permissions": {\n    "openapi": []\n  }\n}\n\n不要包含空的 env 字段！',
-    benefit: '配置错误次数: 频繁 → 0',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-007',
-    title: 'Vue3生命周期问题',
-    category: '前端',
-    severity: 'high',
-    problem: 'Vue3 + UniApp 中生命周期钩子使用方式错误',
-    symptom: 'TypeError: common_vendor.index.onPullDownRefresh is not a function，或页面生命周期不触发',
-    cause: 'Vue3 <script setup> 中不能使用 uni.onXXX() 的方式',
-    solution: '使用 @dcloudio/uni-app 导入：\nimport { onPullDownRefresh, onReachBottom, onLoad } from "@dcloudio/uni-app"',
-    benefit: '运行时错误: 页面崩溃 → 正常运行',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-008',
-    title: '云存储URL问题',
-    category: '云开发',
-    severity: 'medium',
-    problem: '云存储的 cloud:// 协议URL无法直接在小程序中显示图片',
-    symptom: '图片显示不出来，或图片加载失败',
-    cause: 'cloud:// 是云存储内部协议，需要转换为临时 HTTPS URL',
-    solution: '使用 cloud.getTempFileURL() 批量转换：\nconst urls = await cloud.getTempFileURL({ fileList })',
-    benefit: '图片显示成功率: 0% → 100%',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-009',
-    title: '导航栏适配问题',
-    category: '前端',
-    severity: 'medium',
-    problem: '自定义导航栏在不同手机上对齐异常',
-    symptom: '返回按钮与胶囊不对齐，或内容被导航栏遮挡，或状态栏区域显示异常',
-    cause: '不同设备的状态栏高度和胶囊位置不同',
-    solution: '动态获取系统信息计算高度：\nconst systemInfo = uni.getSystemInfoSync()\nconst menuButton = uni.getMenuButtonBoundingClientRect()\nconst navBarHeight = (menuButton.top - systemInfo.statusBarHeight) * 2 + menuButton.height',
-    benefit: '适配机型覆盖: 部分机型 → 100%机型',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  },
-  {
-    id: 'EXP-010',
-    title: '网络异常处理',
-    category: '用户体验',
-    severity: 'medium',
-    problem: '弱网或离线环境下用户体验差',
-    symptom: '页面长时间loading无反馈，或操作失败无提示，或已输入的内容丢失',
-    cause: '未做网络异常处理和本地缓存',
-    solution: '1. 网络状态监听：uni.onNetworkStatusChange\n2. 请求超时处理：10秒超时\n3. 重试机制：失败后递增延迟重试\n4. 本地缓存：先显示缓存再请求最新',
-    benefit: '弱网体验评分: 差 → 良好',
-    createdAt: '2026-02-06',
-    updatedAt: '2026-02-06'
-  }
-]
-
-export const useExperienceStore = defineStore('experience', () => {
-  // 经验列表
-  const experiences = ref(JSON.parse(localStorage.getItem('experiences') || 'null') || initialExperiences)
+export const useExperienceStore = defineStore('experience', {
+  state: () => ({
+    experiences: [],      // 所有经验条目
+    projectLogs: {},      // 每个项目的完整日志
+    intelligentRules: []  // 智能提示规则
+  }),
   
-  // 分类列表
-  const categories = computed(() => {
-    const cats = new Set(experiences.value.map(e => e.category))
-    return Array.from(cats)
-  })
-  
-  // 按分类过滤
-  function getByCategory(category) {
-    if (!category) return experiences.value
-    return experiences.value.filter(e => e.category === category)
-  }
-  
-  // 搜索
-  function search(keyword) {
-    if (!keyword) return experiences.value
-    const kw = keyword.toLowerCase()
-    return experiences.value.filter(e => 
-      e.title.toLowerCase().includes(kw) ||
-      e.problem.toLowerCase().includes(kw) ||
-      e.solution.toLowerCase().includes(kw)
-    )
-  }
-  
-  // 添加经验
-  function addExperience(data) {
-    const exp = {
-      ...data,
-      id: `EXP-${String(experiences.value.length + 1).padStart(3, '0')}`,
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    }
-    experiences.value.unshift(exp)
-    return exp
-  }
-  
-  // 更新经验
-  function updateExperience(id, data) {
-    const index = experiences.value.findIndex(e => e.id === id)
-    if (index !== -1) {
-      experiences.value[index] = {
-        ...experiences.value[index],
-        ...data,
-        updatedAt: new Date().toISOString().split('T')[0]
+  getters: {
+    // 获取某个项目的日志
+    getProjectLog: (state) => (projectId) => {
+      return state.projectLogs[projectId]
+    },
+    
+    // 获取相关经验
+    getRelevantExperiences: (state) => (criteria) => {
+      return state.experiences.filter(exp => {
+        if (criteria.projectType && exp.project?.type !== criteria.projectType) {
+          return false
+        }
+        if (criteria.stage && exp.stage !== criteria.stage) {
+          return false
+        }
+        if (criteria.tags && !criteria.tags.some(tag => exp.tags?.includes(tag))) {
+          return false
+        }
+        return true
+      })
+    },
+    
+    // 统计数据
+    stats: (state) => {
+      return {
+        totalProjects: Object.keys(state.projectLogs).length,
+        totalExperiences: state.experiences.length,
+        activeRules: state.intelligentRules.filter(r => r.enabled).length
       }
     }
-  }
+  },
   
-  // 删除经验
-  function deleteExperience(id) {
-    const index = experiences.value.findIndex(e => e.id === id)
-    if (index !== -1) {
-      experiences.value.splice(index, 1)
-    }
-  }
-  
-  // 导出为 Markdown
-  function exportToMarkdown() {
-    let md = '# 经验知识库\n\n'
-    md += `> 导出时间：${new Date().toLocaleString()}\n\n`
+  actions: {
+    // 初始化加载
+    loadFromStorage() {
+      try {
+        const experiences = localStorage.getItem('experiences')
+        if (experiences) {
+          this.experiences = JSON.parse(experiences)
+        }
+        
+        const projectLogs = localStorage.getItem('project-logs')
+        if (projectLogs) {
+          this.projectLogs = JSON.parse(projectLogs)
+        }
+        
+        const rules = localStorage.getItem('intelligent-rules')
+        if (rules) {
+          this.intelligentRules = JSON.parse(rules)
+        }
+        
+        console.log('📚 经验库已加载:', this.stats)
+      } catch (error) {
+        console.error('加载经验库失败:', error)
+      }
+    },
     
-    const grouped = {}
-    experiences.value.forEach(exp => {
-      if (!grouped[exp.category]) grouped[exp.category] = []
-      grouped[exp.category].push(exp)
-    })
+    // 保存到存储
+    saveToStorage() {
+      try {
+        localStorage.setItem('experiences', JSON.stringify(this.experiences))
+        localStorage.setItem('project-logs', JSON.stringify(this.projectLogs))
+        localStorage.setItem('intelligent-rules', JSON.stringify(this.intelligentRules))
+      } catch (error) {
+        console.error('保存经验库失败:', error)
+      }
+    },
     
-    for (const [category, exps] of Object.entries(grouped)) {
-      md += `## ${category}\n\n`
-      exps.forEach(exp => {
-        const severityIcon = exp.severity === 'critical' ? '🔴' : exp.severity === 'high' ? '🟠' : '🟡'
-        md += `### ${exp.id} ${exp.title}\n\n`
-        md += `**严重程度**：${severityIcon} ${exp.severity}\n\n`
-        md += `#### 问题描述\n${exp.problem}\n\n`
-        md += `#### 错误现象\n${exp.symptom}\n\n`
-        md += `#### 原因分析\n${exp.cause}\n\n`
-        md += `#### 解决方案\n\`\`\`\n${exp.solution}\n\`\`\`\n\n`
-        md += `#### 优化收益\n${exp.benefit}\n\n---\n\n`
+    // 🔴 记录项目阶段
+    logProjectStage(projectId, stage, data) {
+      if (!this.projectLogs[projectId]) {
+        this.projectLogs[projectId] = {
+          projectId,
+          startedAt: new Date().toISOString(),
+          timeline: [],
+          issues: [],
+          improvements: []
+        }
+      }
+      
+      const log = this.projectLogs[projectId]
+      
+      log.timeline.push({
+        stage,
+        timestamp: new Date().toISOString(),
+        data: data || {},
+        snapshot: this.captureSnapshot(projectId, stage)
       })
-    }
+      
+      log.updatedAt = new Date().toISOString()
+      
+      this.saveToStorage()
+      
+      console.log(`📝 记录项目阶段: ${projectId} - ${stage}`)
+    },
     
-    return md
-  }
-  
-  // 监听变化自动保存
-  watch(experiences, (val) => {
-    localStorage.setItem('experiences', JSON.stringify(val))
-  }, { deep: true })
-  
-  return {
-    experiences,
-    categories,
-    getByCategory,
-    search,
-    addExperience,
-    updateExperience,
-    deleteExperience,
-    exportToMarkdown
+    // 🔴 捕获项目状态快照
+    captureSnapshot(projectId, stage) {
+      const projectStore = useProjectStore()
+      const project = projectStore.getProjectById(projectId)
+      
+      if (!project) return null
+      
+      return {
+        stage,
+        timestamp: new Date().toISOString(),
+        requirement: project.requirement ? {
+          hasData: true,
+          fieldsCount: Object.keys(project.requirement).length
+        } : null,
+        prdClient: project.prdClient ? {
+          hasData: true,
+          length: project.prdClient.length
+        } : null,
+        prdDev: project.prdDev ? {
+          hasData: true,
+          length: project.prdDev.length
+        } : null,
+        status: project.status
+      }
+    },
+    
+    // 🔴 记录问题
+    recordIssue(projectId, issue) {
+      const log = this.projectLogs[projectId]
+      if (!log) {
+        console.error('项目日志不存在:', projectId)
+        return null
+      }
+      
+      const issueRecord = {
+        id: `issue-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        stage: issue.stage || 'unknown',
+        title: issue.title,
+        description: issue.description,
+        severity: issue.severity || 'medium',
+        category: issue.category || 'other',
+        snapshot: {
+          before: this.captureSnapshot(projectId, 'before_fix')
+        },
+        solved: false
+      }
+      
+      log.issues.push(issueRecord)
+      this.saveToStorage()
+      
+      console.log(`⚠️ 记录问题: ${projectId} - ${issue.title}`)
+      
+      return issueRecord.id
+    },
+    
+    // 🔴 记录问题解决
+    recordIssueSolved(projectId, issueId, solution) {
+      const log = this.projectLogs[projectId]
+      if (!log) return
+      
+      const issue = log.issues.find(i => i.id === issueId)
+      if (!issue) return
+      
+      // 记录解决后快照
+      issue.snapshot.after = this.captureSnapshot(projectId, 'after_fix')
+      issue.solution = solution
+      issue.solved = true
+      issue.solvedAt = new Date().toISOString()
+      
+      // 分析差异
+      issue.diff = this.analyzeDiff(
+        issue.snapshot.before,
+        issue.snapshot.after
+      )
+      
+      this.saveToStorage()
+      
+      console.log(`✅ 问题已解决: ${projectId} - ${issue.title}`)
+    },
+    
+    // 🔴 分析前后差异
+    analyzeDiff(before, after) {
+      const diff = {
+        changes: [],
+        summary: ''
+      }
+      
+      // 对比需求
+      if (!before.requirement && after.requirement) {
+        diff.changes.push({
+          type: 'requirement',
+          action: 'added',
+          description: '添加了需求数据'
+        })
+      }
+      
+      // 对比PRD
+      if (!before.prdClient && after.prdClient) {
+        diff.changes.push({
+          type: 'prdClient',
+          action: 'generated',
+          description: '生成了客户版PRD'
+        })
+      } else if (before.prdClient?.length !== after.prdClient?.length) {
+        diff.changes.push({
+          type: 'prdClient',
+          action: 'modified',
+          before: before.prdClient?.length || 0,
+          after: after.prdClient?.length || 0,
+          description: 'PRD内容发生变化'
+        })
+      }
+      
+      diff.summary = `共${diff.changes.length}处变更`
+      
+      return diff
+    },
+    
+    // 🔴 项目完成时生成经验总结
+    async generateProjectExperience(projectId) {
+      const log = this.projectLogs[projectId]
+      if (!log) {
+        throw new Error('项目日志不存在')
+      }
+      
+      const projectStore = useProjectStore()
+      const project = projectStore.getProjectById(projectId)
+      
+      console.log('🤖 AI正在分析项目，生成经验总结...')
+      
+      // 准备数据
+      const projectData = {
+        project: {
+          id: project.id,
+          name: project.name,
+          type: project.requirement?.appType || '未知',
+          duration: this.calculateDuration(log)
+        },
+        timeline: log.timeline.map(t => ({
+          stage: t.stage,
+          timestamp: t.timestamp
+        })),
+        issues: log.issues.map(i => ({
+          title: i.title,
+          description: i.description,
+          category: i.category,
+          solution: i.solution,
+          diff: i.diff
+        })),
+        stats: {
+          totalStages: log.timeline.length,
+          totalIssues: log.issues.length,
+          solvedIssues: log.issues.filter(i => i.solved).length
+        }
+      }
+      
+      // 调用AI分析
+      const prompt = `
+你是一个项目管理专家，请分析以下项目的完整日志，提取经验教训。
+
+项目数据：
+${JSON.stringify(projectData, null, 2)}
+
+请按以下JSON格式输出：
+{
+  "keyIssues": [
+    {
+      "title": "问题标题",
+      "description": "问题描述",
+      "category": "分类",
+      "cause": "发生原因",
+      "solution": "解决方案",
+      "beforeAfter": {
+        "before": "优化前的情况",
+        "after": "优化后的情况",
+        "diff": ["差异点1", "差异点2"]
+      }
+    }
+  ],
+  "lessons": [
+    "经验教训1",
+    "经验教训2"
+  ],
+  "improvements": [
+    {
+      "area": "改进领域",
+      "description": "改进描述",
+      "autoAction": {
+        "trigger": "触发条件",
+        "action": "自动动作"
+      }
+    }
+  ],
+  "recommendations": [
+    "未来建议1",
+    "未来建议2"
+  ]
+}
+`
+      
+      try {
+        const aiResponse = await callAI(prompt, {
+          model: 'gpt-4',
+          temperature: 0.3
+        })
+        
+        const analysis = JSON.parse(aiResponse)
+        
+        // 保存经验
+        const experience = {
+          id: `exp-${Date.now()}`,
+          projectId,
+          projectName: project.name,
+          projectType: project.requirement?.appType,
+          timestamp: new Date().toISOString(),
+          analysis,
+          rawLog: projectData,
+          applied: false,
+          applyToFutureProjects: true
+        }
+        
+        this.experiences.push(experience)
+        this.saveToStorage()
+        
+        console.log('✅ 经验总结生成完成')
+        
+        return experience
+        
+      } catch (error) {
+        console.error('AI分析失败:', error)
+        throw error
+      }
+    },
+    
+    // 🔴 应用改进到系统
+    applyImprovements(experience) {
+      if (!experience.analysis?.improvements) return
+      
+      experience.analysis.improvements.forEach(improvement => {
+        if (improvement.autoAction) {
+          this.intelligentRules.push({
+            id: `rule-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            source: experience.id,
+            projectName: experience.projectName,
+            trigger: improvement.autoAction.trigger,
+            action: improvement.autoAction.action,
+            enabled: true,
+            createdAt: new Date().toISOString(),
+            hitCount: 0
+          })
+        }
+      })
+      
+      experience.applied = true
+      this.saveToStorage()
+      
+      console.log(`🎯 已应用${experience.analysis.improvements.length}个改进`)
+    },
+    
+    // 🔴 检查智能提示
+    checkIntelligentHints(context) {
+      const hints = []
+      
+      this.intelligentRules.forEach(rule => {
+        if (!rule.enabled) return
+        
+        // 检查触发条件
+        if (this.matchTrigger(rule.trigger, context)) {
+          hints.push({
+            message: rule.action,
+            source: rule.projectName,
+            ruleId: rule.id
+          })
+          
+          // 增加命中计数
+          rule.hitCount = (rule.hitCount || 0) + 1
+        }
+      })
+      
+      if (hints.length > 0) {
+        this.saveToStorage()
+      }
+      
+      return hints
+    },
+    
+    // 匹配触发条件
+    matchTrigger(trigger, context) {
+      // 简单的关键词匹配
+      if (typeof trigger === 'string') {
+        const text = JSON.stringify(context).toLowerCase()
+        return text.includes(trigger.toLowerCase())
+      }
+      
+      // 对象形式的触发条件
+      if (trigger.keywords) {
+        const text = JSON.stringify(context).toLowerCase()
+        return trigger.keywords.some(keyword => 
+          text.includes(keyword.toLowerCase())
+        )
+      }
+      
+      return false
+    },
+    
+    // 计算项目时长
+    calculateDuration(log) {
+      if (!log.timeline || log.timeline.length === 0) return 0
+      
+      const start = new Date(log.startedAt)
+      const end = new Date(log.timeline[log.timeline.length - 1].timestamp)
+      
+      return Math.round((end - start) / (1000 * 60 * 60)) // 小时
+    },
+    
+    // 清空所有数据
+    clearAll() {
+      this.experiences = []
+      this.projectLogs = {}
+      this.intelligentRules = []
+      this.saveToStorage()
+    }
   }
 })
+
+// 需要导入 projectStore
+import { useProjectStore } from './project'

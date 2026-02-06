@@ -92,17 +92,24 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRequirementPoolStore } from '@/stores/requirementPool'  // ⭐ 新增
+import { useExperienceStore } from '@/stores/experience'  // ⭐ 新增
 
 const route = useRoute()
 const poolStore = useRequirementPoolStore()  // ⭐ 新增
+const experienceStore = useExperienceStore()  // ⭐ 新增
 const isCollapse = ref(false)
 
 const currentRoute = computed(() => route.path)
 const isPublicPage = computed(() => route.meta?.public === true)
 
-// ⭐ 初始化需求池
+// ⭐ 初始化需求池和经验库
 onMounted(() => {
   poolStore.loadFromStorage()
+  experienceStore.loadFromStorage()  // ⭐ 新增
+  
+  console.log('📚 系统初始化完成')
+  console.log('  - 需求池:', poolStore.pendingCount, '个待评估')
+  console.log('  - 经验库:', experienceStore.stats.totalExperiences, '条经验')
 })
 </script>
 

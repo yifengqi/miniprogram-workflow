@@ -256,6 +256,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRequirementPoolStore } from '@/stores/requirementPool'
 import { useProjectStore } from '@/stores/project'
+import { triggerAutomation } from '@/utils/aiQueue'  // ⭐ 新增
 
 const router = useRouter()
 const poolStore = useRequirementPoolStore()
@@ -314,17 +315,19 @@ function viewDetail(requirement) {
 }
 
 // 接受需求并创建项目
+// 接受需求并创建项目
 function acceptAndCreateProject(requirement) {
   detailVisible.value = false
   
   ElMessageBox.confirm(
-    `确认立项「${requirement.quickInfo.appName}」并跳转到PRD生成页面吗？`,
+    `确认立项「${requirement.quickInfo.appName}」并启动AI自动化流程吗？\n\n✅ AI将自动生成客户版PRD\n✅ AI将自动生成开发版PRD\n\n您只需要最后确认即可`,
     '确认立项',
     {
-      confirmButtonText: '确认立项',
+      confirmButtonText: '🚀 立项并启动自动化',
       cancelButtonText: '取消',
       type: 'success',
-      center: true
+      center: true,
+      distinguishCancelAndClose: true
     }
   ).then(() => {
     // 1. 创建项目
@@ -336,12 +339,15 @@ function acceptAndCreateProject(requirement) {
     // 3. 设置为当前项目
     projectStore.setCurrentProject(project.id)
     
-    // 4. 跳转到PRD生成页面
+    // ⭐ 4. 触发自动化流程
+    triggerAutomation(project.id)
+    
+    // 5. 跳转到PRD生成页面
     router.push('/prd')
     
     ElMessage.success({
-      message: '项目已创建！现在可以生成PRD了',
-      duration: 3000
+      message: '🎉 项目已创建！AI正在自动生成PRD，请稍候...',
+      duration: 5000
     })
   }).catch(() => {
     // 用户取消

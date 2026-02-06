@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
+import { useExperienceStore } from './experience'
 
 export const useProjectStore = defineStore('project', () => {
+  const experienceStore = useExperienceStore()
   // 项目列表
   const projects = ref(JSON.parse(localStorage.getItem('projects') || '[]'))
   
@@ -44,8 +46,12 @@ export const useProjectStore = defineStore('project', () => {
       requirement: requirement.data,  // 完整需求数据
       prdClient: null,
       prdDev: null,
+      demoCode: null,  // ⭐ 新增：Demo代码
+      iterations: [],  // ⭐ 新增：迭代记录
       checklistProgress: {},
       status: 'requirement',
+      stage: 'requirement',  // ⭐ 新增：当前阶段
+      autoMode: true,  // ⭐ 新增：是否自动化模式
       
       // 快速信息
       quickInfo: {
@@ -56,6 +62,13 @@ export const useProjectStore = defineStore('project', () => {
     }
     projects.value.unshift(project)
     currentProjectId.value = project.id
+    
+    // ⭐ 记录项目创建
+    experienceStore.logProjectStage(project.id, 'created', {
+      source: 'requirement_pool',
+      requirementId: requirement.id
+    })
+    
     return project
   }
   
@@ -106,7 +119,49 @@ export const useProjectStore = defineStore('project', () => {
     if (currentProjectId.value) {
       const key = type === 'client' ? 'prdClient' : 'prdDev'
       updateProject(currentProjectId.value, { [key]: content })
+      
+      // ⭐ 记录PRD生成
+      experienceStore.logProjectStage(currentProjectId.value, `prd_${type}_generated`, {
+        contentLength: content?.length || 0
+      })
+      
+      // ⭐ 更新项目阶段
+      if (type === 'dev') {
+        updateProject(currentProjectId.value, { 
+          stage: 'prd_ready',
+          status: 'prd-generated'
+        })
+      }
     }
+  }
+  
+  // ⭐ 新增：获取项目by ID
+  function getProjectById(id) {
+    return projects.value.find(p => p.id === id)
+  }
+  
+  // ⭐ 新增：更新项目阶段
+  function updateStage(id, stage) {
+    updateProject(id, { stage })
+    experienceStore.logProjectStage(id, stage)
+  }
+  
+  // ⭐ 新增：记录问题
+  function recordIssue(projectId, issue) {
+    return experienceStore.recordIssue(projectId, issue)
+  }
+  
+  // ⭐ 新增：标记项目完成
+  async function completeProject(projectId) {
+    updateProject(projectId, { 
+      status: 'completed',
+      stage: 'completed',
+      completedAt: new Date().toISOString()
+    })
+    
+    experienceStore.logProjectStage(projectId, 'completed')
+    
+    return await experienceStore.generateProjectExperience(projectId)
   }
   
   // 保存检查清单进度
@@ -151,12 +206,16 @@ export const useProjectStore = defineStore('project', () => {
     createProject,
     createProjectFromRequirement,  // ⭐ 新增
     setCurrentProject,  // ⭐ 新增
+    getProjectById,  // ⭐ 新增
     updateProject,
+    updateStage,  // ⭐ 新增
     deleteProject,
     selectProject,
     saveRequirement,
     savePRD,
     saveChecklistProgress,
+    recordIssue,  // ⭐ 新增
+    completeProject,  // ⭐ 新增
     exportAllData,
     importData,
     clearAllData
