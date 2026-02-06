@@ -14,6 +14,121 @@
       </div>
     </div>
     
+    <!-- ⭐ MD文档上传区域 -->
+    <div 
+      class="md-upload-zone card"
+      :class="{ dragging: isDragging }"
+      @dragover.prevent="isDragging = true"
+      @dragleave.prevent="isDragging = false"
+      @drop.prevent="handleFileDrop"
+      @click="triggerFileInput"
+    >
+      <input 
+        ref="fileInputRef"
+        type="file" 
+        accept=".md,.markdown,.txt"
+        multiple
+        style="display: none;"
+        @change="handleFileSelect"
+      />
+      
+      <div class="upload-content">
+        <div class="upload-icon">📄</div>
+        <div class="upload-text">
+          <h4>上传需求文档</h4>
+          <p>拖拽 .md 文件到此处，或 <strong>点击选择文件</strong>，或 <strong>Ctrl+V 粘贴</strong> Markdown 内容</p>
+        </div>
+      </div>
+      
+      <!-- 粘贴输入框（展开时显示） -->
+      <div v-if="showPasteArea" class="paste-area" @click.stop>
+        <el-input
+          ref="pasteInputRef"
+          v-model="pasteContent"
+          type="textarea"
+          :rows="8"
+          placeholder="在此粘贴 Markdown 内容...&#10;&#10;支持格式：&#10;# 项目名称&#10;## 项目背景&#10;## 核心功能&#10;..."
+          @paste="handlePaste"
+        />
+        <div class="paste-actions">
+          <el-button size="small" @click.stop="showPasteArea = false">取消</el-button>
+          <el-button type="primary" size="small" @click.stop="submitPasteContent" :disabled="!pasteContent.trim()">
+            导入到需求池
+          </el-button>
+        </div>
+      </div>
+      
+      <el-button 
+        v-if="!showPasteArea"
+        type="text" 
+        size="small" 
+        class="paste-toggle"
+        @click.stop="openPasteArea"
+      >
+        或者直接粘贴文本内容 →
+      </el-button>
+    </div>
+    
+    <!-- 导入预览弹窗 -->
+    <el-dialog v-model="showImportPreview" title="📄 导入预览" width="700px" top="5vh">
+      <div class="import-preview">
+        <el-alert type="info" :closable="false" style="margin-bottom: 16px;">
+          <template #title>
+            已从文档中识别出以下信息，确认后将加入需求池
+          </template>
+        </el-alert>
+        
+        <el-form label-position="top">
+          <el-form-item label="项目名称">
+            <el-input v-model="importData.appName" placeholder="请输入项目名称" />
+          </el-form-item>
+          <el-form-item label="项目背景">
+            <el-input v-model="importData.background" type="textarea" :rows="3" placeholder="项目背景描述" />
+          </el-form-item>
+          <el-form-item label="核心功能（P0）">
+            <el-input v-model="importData.featuresP0" type="textarea" :rows="4" placeholder="必须实现的核心功能" />
+          </el-form-item>
+          <el-form-item label="重要功能（P1）">
+            <el-input v-model="importData.featuresP1" type="textarea" :rows="3" placeholder="建议实现的功能" />
+          </el-form-item>
+          <el-form-item label="可选功能（P2）">
+            <el-input v-model="importData.featuresP2" type="textarea" :rows="2" placeholder="锦上添花的功能" />
+          </el-form-item>
+          
+          <el-row :gutter="16">
+            <el-col :span="8">
+              <el-form-item label="联系方式">
+                <el-input v-model="importData.contact" placeholder="选填" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="预算">
+                <el-input v-model="importData.budget" placeholder="选填" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="期望时间">
+                <el-input v-model="importData.expectedTime" placeholder="选填" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-form>
+        
+        <el-collapse>
+          <el-collapse-item title="📝 查看原始 Markdown 内容">
+            <pre class="raw-md">{{ importData._rawMarkdown }}</pre>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+      
+      <template #footer>
+        <el-button @click="showImportPreview = false">取消</el-button>
+        <el-button type="primary" @click="confirmImport" :disabled="!importData.appName?.trim()">
+          确认导入到需求池
+        </el-button>
+      </template>
+    </el-dialog>
+    
     <!-- 状态筛选标签 -->
     <el-tabs v-model="activeTab" class="status-tabs">
       <el-tab-pane name="pending">
@@ -236,7 +351,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -252,7 +367,8 @@ import {
   Right,
   Link,
   PictureRounded,
-  Download
+  Download,
+  UploadFilled
 } from '@element-plus/icons-vue'
 import { useRequirementPoolStore } from '@/stores/requirementPool'
 import { useProjectStore } from '@/stores/project'
@@ -270,6 +386,241 @@ const showQRCode = ref(false)
 const qrcodeContainer = ref(null)
 
 const publicFormUrl = window.location.origin + '/public-form'
+
+// ⭐ MD上传相关
+const isDragging = ref(false)
+const showPasteArea = ref(false)
+const pasteContent = ref('')
+const showImportPreview = ref(false)
+const fileInputRef = ref(null)
+const pasteInputRef = ref(null)
+const importData = ref({
+  appName: '',
+  background: '',
+  featuresP0: '',
+  featuresP1: '',
+  featuresP2: '',
+  contact: '',
+  budget: '',
+  expectedTime: '',
+  _rawMarkdown: ''
+})
+
+// ⭐ 全局键盘监听（Ctrl+V 粘贴）
+function handleGlobalPaste(e) {
+  // 如果焦点在输入框内则不拦截
+  const tag = document.activeElement?.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea') return
+  
+  const text = e.clipboardData?.getData('text')
+  if (text && (text.includes('#') || text.includes('##') || text.length > 100)) {
+    e.preventDefault()
+    parseAndPreview(text)
+  }
+}
+
+onMounted(() => {
+  poolStore.loadFromStorage()
+  document.addEventListener('paste', handleGlobalPaste)
+})
+
+// ⭐ 拖拽文件处理
+function handleFileDrop(e) {
+  isDragging.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  processFiles(files)
+}
+
+// ⭐ 选择文件处理
+function handleFileSelect(e) {
+  const files = Array.from(e.target?.files || [])
+  processFiles(files)
+  // 清空input，允许重复选同一文件
+  if (fileInputRef.value) fileInputRef.value.value = ''
+}
+
+function triggerFileInput() {
+  if (!showPasteArea.value) {
+    fileInputRef.value?.click()
+  }
+}
+
+// ⭐ 处理文件列表
+function processFiles(files) {
+  const mdFiles = files.filter(f => 
+    f.name.endsWith('.md') || f.name.endsWith('.markdown') || f.name.endsWith('.txt')
+  )
+  
+  if (mdFiles.length === 0) {
+    ElMessage.warning('请上传 .md 或 .txt 格式的文件')
+    return
+  }
+  
+  // 处理第一个文件（后续可扩展为批量）
+  const file = mdFiles[0]
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const content = e.target?.result
+    if (content) {
+      parseAndPreview(content, file.name)
+    }
+  }
+  reader.readAsText(file, 'utf-8')
+  
+  // 如果有多个文件，提示
+  if (mdFiles.length > 1) {
+    ElMessage.info(`检测到 ${mdFiles.length} 个文件，先导入第一个：${mdFiles[0].name}`)
+  }
+}
+
+// ⭐ 粘贴区域
+function openPasteArea() {
+  showPasteArea.value = true
+  pasteContent.value = ''
+  setTimeout(() => pasteInputRef.value?.focus(), 100)
+}
+
+function handlePaste(e) {
+  // textarea自身的paste事件，不需要额外处理，内容会自动填入
+}
+
+function submitPasteContent() {
+  if (!pasteContent.value.trim()) return
+  parseAndPreview(pasteContent.value)
+  showPasteArea.value = false
+  pasteContent.value = ''
+}
+
+// ⭐ 解析 Markdown 并打开预览
+function parseAndPreview(mdContent, fileName = '') {
+  const parsed = parseMdToRequirement(mdContent, fileName)
+  importData.value = { ...parsed, _rawMarkdown: mdContent }
+  showImportPreview.value = true
+}
+
+// ⭐ 核心：MD解析器
+function parseMdToRequirement(md, fileName = '') {
+  const result = {
+    appName: '',
+    background: '',
+    featuresP0: '',
+    featuresP1: '',
+    featuresP2: '',
+    contact: '',
+    budget: '',
+    expectedTime: '',
+    appType: [],
+    targetUser: '',
+    otherNotes: ''
+  }
+  
+  // 1. 提取一级标题作为项目名
+  const h1Match = md.match(/^#\s+(.+)$/m)
+  if (h1Match) {
+    result.appName = h1Match[1].trim()
+  } else if (fileName) {
+    // 用文件名
+    result.appName = fileName.replace(/\.(md|markdown|txt)$/i, '')
+  }
+  
+  // 2. 按二级标题拆分段落
+  const sections = {}
+  const sectionRegex = /^##\s+(.+)$/gm
+  let match
+  const sectionPositions = []
+  
+  while ((match = sectionRegex.exec(md)) !== null) {
+    sectionPositions.push({ title: match[1].trim(), index: match.index + match[0].length })
+  }
+  
+  sectionPositions.forEach((sec, i) => {
+    const end = i + 1 < sectionPositions.length ? sectionPositions[i + 1].index - sectionPositions[i + 1].title.length - 3 : md.length
+    const content = md.slice(sec.index, end).trim()
+    sections[sec.title.toLowerCase()] = content
+    // 也存原始标题
+    sections[sec.title] = content
+  })
+  
+  // 3. 智能匹配各字段
+  for (const [title, content] of Object.entries(sections)) {
+    const t = title.toLowerCase()
+    
+    // 背景
+    if (t.includes('背景') || t.includes('概述') || t.includes('简介') || t.includes('overview') || t.includes('introduction')) {
+      result.background = content
+    }
+    // 核心功能
+    else if (t.includes('核心功能') || t.includes('p0') || t.includes('必须') || t.includes('core') || t.includes('mvp')) {
+      result.featuresP0 = content
+    }
+    // 重要功能
+    else if (t.includes('重要功能') || t.includes('p1') || t.includes('期望') || t.includes('important')) {
+      result.featuresP1 = content
+    }
+    // 可选功能
+    else if (t.includes('可选') || t.includes('p2') || t.includes('拓展') || t.includes('optional') || t.includes('扩展') || t.includes('中长期')) {
+      result.featuresP2 = content
+    }
+    // 目标用户
+    else if (t.includes('用户') || t.includes('受众') || t.includes('target')) {
+      result.targetUser = content
+    }
+    // 预算
+    else if (t.includes('预算') || t.includes('budget') || t.includes('费用')) {
+      result.budget = content
+    }
+    // 时间
+    else if (t.includes('时间') || t.includes('deadline') || t.includes('timeline') || t.includes('期限')) {
+      result.expectedTime = content
+    }
+    // 功能需求（通用）
+    else if (t.includes('功能') || t.includes('feature') || t.includes('需求')) {
+      // 如果P0还空着，放P0
+      if (!result.featuresP0) result.featuresP0 = content
+      else if (!result.featuresP1) result.featuresP1 = content
+    }
+  }
+  
+  // 4. 如果完全没解析到结构，把全文当背景
+  if (!result.background && !result.featuresP0) {
+    // 去掉一级标题后，剩余当背景
+    const noH1 = md.replace(/^#\s+.+$/m, '').trim()
+    result.background = noH1.slice(0, 500)
+    result.featuresP0 = noH1.length > 500 ? noH1.slice(500) : ''
+  }
+  
+  return result
+}
+
+// ⭐ 确认导入
+function confirmImport() {
+  if (!importData.value.appName?.trim()) {
+    ElMessage.warning('项目名称不能为空')
+    return
+  }
+  
+  const reqData = {
+    appName: importData.value.appName,
+    background: importData.value.background,
+    featuresP0: importData.value.featuresP0,
+    featuresP1: importData.value.featuresP1,
+    featuresP2: importData.value.featuresP2,
+    contact: importData.value.contact,
+    budget: importData.value.budget,
+    expectedTime: importData.value.expectedTime,
+    targetUser: importData.value.targetUser || '',
+    appType: importData.value.appType || [],
+    otherNotes: importData.value.otherNotes || '',
+    _source: 'md_import',
+    _rawMarkdown: importData.value._rawMarkdown
+  }
+  
+  poolStore.addRequirement(reqData)
+  showImportPreview.value = false
+  activeTab.value = 'pending'
+  
+  ElMessage.success(`「${reqData.appName}」已导入需求池！`)
+}
 
 // 根据状态筛选需求
 const filteredRequirements = computed(() => {
@@ -443,9 +794,9 @@ function downloadQRCode() {
   }
 }
 
-// 初始化
-onMounted(() => {
-  poolStore.loadFromStorage()
+// 清理
+onUnmounted(() => {
+  document.removeEventListener('paste', handleGlobalPaste)
 })
 </script>
 
@@ -478,6 +829,87 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
+}
+
+/* ⭐ MD上传区域 */
+.md-upload-zone {
+  margin-bottom: 24px;
+  padding: 24px;
+  border: 2px dashed var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-align: center;
+}
+
+.md-upload-zone:hover {
+  border-color: var(--primary-color);
+  background: rgba(212, 175, 55, 0.03);
+}
+
+.md-upload-zone.dragging {
+  border-color: #409eff;
+  background: rgba(64, 158, 255, 0.08);
+  transform: scale(1.01);
+  box-shadow: 0 0 20px rgba(64, 158, 255, 0.15);
+}
+
+.upload-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.upload-icon {
+  font-size: 40px;
+}
+
+.upload-text h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.upload-text p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.paste-toggle {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.paste-area {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.paste-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* 导入预览 */
+.import-preview {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.raw-md {
+  background: var(--bg-tertiary, #f5f7fa);
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .status-tabs {
