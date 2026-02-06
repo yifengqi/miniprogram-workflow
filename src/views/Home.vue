@@ -94,15 +94,16 @@
           </el-tag>
         </div>
       </div>
-    </div>
-    
-    <!-- 空状态 -->
-    <div v-else class="empty-state">
-      <el-icon :size="80"><FolderOpened /></el-icon>
-      <p>还没有项目，去需求池看看有没有可以立项的需求吧</p>
-      <el-button type="primary" @click="$router.push('/requirement-pool')">
-        进入需求池
-      </el-button>
+      </div>
+      
+      <!-- 空状态 -->
+      <div v-else class="empty-state">
+        <el-icon :size="80"><FolderOpened /></el-icon>
+        <p>还没有项目，去需求池看看有没有可以立项的需求吧</p>
+        <el-button type="primary" @click="$router.push('/requirement-pool')">
+          进入需求池
+        </el-button>
+      </div>
     </div>
     
     <!-- 工作流程说明 -->
