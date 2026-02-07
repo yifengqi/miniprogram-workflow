@@ -143,8 +143,16 @@
                 </div>
               </div>
               
-              <div class="save-hint">
-                双击项目中的 <code>open-github-desktop.command</code> → GitHub Desktop 打开 → Cmd+V 粘贴 commit message → Commit
+              <!-- 终端命令一键复制 -->
+              <div class="terminal-cmd-area">
+                <div class="terminal-label">打开终端（Terminal），粘贴以下命令运行：</div>
+                <div class="terminal-box" @click="copyTerminalCmd">
+                  <code>{{ terminalCommand }}</code>
+                  <span class="copy-hint">点击复制</span>
+                </div>
+                <div class="save-hint">
+                  运行后会自动：初始化 Git → 提交代码 → 打开 GitHub Desktop → 点 Publish 即可上传
+                </div>
               </div>
             </template>
             <span v-else>❌ {{ saveResult.message }}</span>
@@ -432,10 +440,28 @@ const activeFiles = ref([])
 // ⭐ 本地文件夹保存相关
 const savingToFolder = ref(false)
 const savedFolderName = ref('')
+const savedProjectName = ref('')  // 保存时的项目子目录名
 const saveResult = ref(null)
 const lastCommitMessage = ref(null)  // { summary, description }
 const generatingCommit = ref(false)
 let savedDirHandle = null  // File System Access API 的目录句柄
+
+// ⭐ 终端命令（用户粘贴到 Terminal 执行）
+const terminalCommand = computed(() => {
+  const projName = savedProjectName.value || demoCode.value.projectName || projectStore.currentProject?.name || 'project'
+  const commitSummary = lastCommitMessage.value?.summary || `feat: ${projName} Phase ${viewPhase.value}`
+  // 用户需要先 cd 到保存的目录，我们提供剩余命令
+  return `cd ~/*/"${projName}" && git init && git add . && git commit -m "${commitSummary}" && open -a "GitHub Desktop" .`
+})
+
+async function copyTerminalCmd() {
+  try {
+    await navigator.clipboard.writeText(terminalCommand.value)
+    ElMessage.success('终端命令已复制，打开 Terminal 粘贴运行即可')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
 
 // ⭐ 阶段相关
 const viewPhase = ref(projectStore.currentProject?.currentPhase || 1)
@@ -608,6 +634,7 @@ async function saveToLocalFolder() {
     savedFolderName.value = dirHandle.name
     
     const projectName = demoCode.value.projectName || projectStore.currentProject.name
+    savedProjectName.value = projectName
     
     // 创建项目子目录
     const projectDir = await dirHandle.getDirectoryHandle(projectName, { create: true })
@@ -760,9 +787,7 @@ read -n 1
     
     ElNotification({
       title: '✅ 代码已保存',
-      message: commitMsg 
-        ? `${fileCount} 个文件已保存。Commit message 已复制到剪贴板，双击 open-github-desktop.command 即可打开。`
-        : `${fileCount} 个文件已保存。双击项目中的 open-github-desktop.command 可一键打开 GitHub Desktop。`,
+      message: `${fileCount} 个文件已保存到「${dirHandle.name}/${projectName}」。点击下方终端命令复制，粘贴到 Terminal 即可一键提交到 GitHub。`,
       type: 'success',
       duration: 10000
     })
@@ -912,7 +937,7 @@ async function generateCommitMessage() {
 }
 
 /**
- * ⭐ 打开 GitHub Desktop（带 AI commit message）
+ * ⭐ 打开 GitHub Desktop（终端命令方案，解决权限问题）
  */
 async function openInGitHubDesktop() {
   if (!savedFolderName.value) {
@@ -929,53 +954,55 @@ async function openInGitHubDesktop() {
   }
   generatingCommit.value = false
   
-  // 复制到剪贴板
-  if (commitMsg) {
-    try {
-      await navigator.clipboard.writeText(`${commitMsg.summary}\n\n${commitMsg.description}`)
-    } catch {}
-  }
+  const projName = savedProjectName.value || demoCode.value.projectName || projectStore.currentProject?.name
+  const commitSummary = commitMsg?.summary || `feat: ${projName}`
+  
+  // 生成终端命令并复制
+  const cmd = terminalCommand.value
+  try {
+    await navigator.clipboard.writeText(cmd)
+  } catch {}
   
   const summaryPreview = commitMsg?.summary || 'feat: Phase X ...'
   const descPreview = commitMsg?.description || '...'
+  const escapedCmd = cmd.replace(/</g, '&lt;').replace(/>/g, '&gt;')
   
   ElMessageBox.alert(
     `<div style="line-height: 1.8;">
-      <div style="background: #fdf6ec; border: 1px solid #e6a23c; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; color: #e6a23c;">
-        ⚠️ <strong>前置检查：</strong>需要安装 <a href="https://desktop.github.com/" target="_blank" style="color: #e6a23c; text-decoration: underline;">GitHub Desktop</a>。
-        双击脚本时如果未安装，会弹窗提示并引导下载。
+      <p><strong>📋 AI Commit Message：</strong></p>
+      <div style="background: #1a1a2e; color: #67c23a; padding: 10px 14px; border-radius: 8px; margin: 6px 0 14px; font-family: monospace; font-size: 13px;">
+        <div style="font-weight: 600;">${summaryPreview}</div>
+        <div style="color: #aaa; white-space: pre-line; margin-top: 2px;">${descPreview}</div>
       </div>
 
-      <p><strong>📋 AI 生成的 Commit Message（已复制到剪贴板）：</strong></p>
-      <div style="background: #1a1a2e; color: #67c23a; padding: 12px 16px; border-radius: 8px; margin: 8px 0 14px; font-family: monospace; font-size: 13px;">
-        <div style="font-weight: 600; margin-bottom: 4px;">${summaryPreview}</div>
-        <div style="color: #aaa; white-space: pre-line;">${descPreview}</div>
+      <p><strong>操作（2步完成）：</strong></p>
+
+      <p style="margin: 8px 0 4px;"><strong>第1步</strong> — 打开 Terminal（终端），粘贴以下命令：</p>
+      <div style="background: #0d1117; color: #58a6ff; padding: 10px 14px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; cursor: pointer; border: 1px solid #30363d;" onclick="navigator.clipboard.writeText(this.innerText.trim())">
+        ${escapedCmd}
+      </div>
+      <p style="font-size: 12px; color: #999; margin: 4px 0 0;">（已复制到剪贴板，直接 Cmd+V 粘贴）</p>
+
+      <p style="margin: 14px 0 4px;"><strong>第2步</strong> — GitHub Desktop 打开后：</p>
+      <ol style="margin: 0; padding-left: 20px;">
+        <li>确认文件列表 → 点击 <strong>Publish repository</strong></li>
+        <li>选择公开或私有 → 点击 <strong>Publish</strong></li>
+        <li>✅ 代码已上传到 GitHub</li>
+      </ol>
+
+      <div style="background: #fdf6ec; border: 1px solid #e6a23c; padding: 8px 12px; border-radius: 6px; margin-top: 14px; font-size: 13px; color: #e6a23c;">
+        ⚠️ 如果提示 <strong>"GitHub Desktop 未安装"</strong> → <a href="https://desktop.github.com/" target="_blank" style="color: #e6a23c; text-decoration: underline;">点击下载安装</a>，安装后重新粘贴命令即可
       </div>
       
-      <p><strong>操作步骤：</strong></p>
-      <ol>
-        <li>在 Finder 中找到保存的项目文件夹「<code>${savedFolderName.value}</code>」</li>
-        <li>双击 <strong style="color: #409eff;">open-github-desktop.command</strong>
-          <ul style="margin: 4px 0; font-size: 13px; color: #999;">
-            <li>首次可能提示"无法打开" → 右键 → 打开 → 信任即可</li>
-            <li>脚本会自动检查 Git 和 GitHub Desktop 是否安装</li>
-            <li>❌ 如果未安装，会<strong style="color: #f56c6c;">弹出提示窗口</strong>引导你下载</li>
-          </ul>
-        </li>
-        <li>GitHub Desktop 打开后，显示所有文件变更</li>
-        <li>左下角 Summary 栏 <strong>Cmd+V 粘贴</strong> commit message</li>
-        <li>点击 <strong>Commit to main</strong> → <strong>Publish / Push</strong></li>
-      </ol>
-      
-      <p style="margin-top: 12px; color: #67c23a;">
-        💡 之后每次代码更新 → 保存到本地 → GitHub Desktop 自动显示 diff → 粘贴 commit → push
-      </p>
+      <div style="background: #f0f9eb; border: 1px solid #67c23a; padding: 8px 12px; border-radius: 6px; margin-top: 8px; font-size: 13px; color: #67c23a;">
+        💡 后续更新代码：保存到本地 → 打开 GitHub Desktop → 看到 diff → 写 commit → Push
+      </div>
     </div>`,
     '🚀 用 GitHub Desktop 提交代码',
     {
       dangerouslyUseHTMLString: true,
-      confirmButtonText: '去操作',
-      customStyle: { maxWidth: '600px' }
+      confirmButtonText: '知道了',
+      customStyle: { maxWidth: '620px' }
     }
   )
 }
@@ -1317,6 +1344,53 @@ function goToIteration() {
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 12px;
+}
+
+/* 终端命令区域 */
+.terminal-cmd-area {
+  margin-top: 14px;
+}
+
+.terminal-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.terminal-box {
+  background: #0d1117;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #58a6ff;
+  word-break: break-all;
+  line-height: 1.6;
+  cursor: pointer;
+  border: 1px solid #30363d;
+  position: relative;
+  transition: border-color 0.2s;
+}
+
+.terminal-box:hover {
+  border-color: #58a6ff;
+}
+
+.terminal-box .copy-hint {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #8b949e;
+  background: #161b22;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.terminal-box:hover .copy-hint {
+  color: #58a6ff;
 }
 
 /* Commit message 预览 */
