@@ -116,6 +116,8 @@ function taskTypeLabel(type) {
     generate_demo_step1_plan: '📐 Demo架构规划',
     generate_demo_step2_files: '📄 Demo文件生成',
     generate_demo_step2_cloud: '☁️ 云函数生成',
+    generate_demo_step3_guides: '📖 部署/测试指南',
+    generate_test_cases: '🧪 测试用例生成',
     generate_prd_client: '客户版PRD',
     generate_prd_dev: '开发版PRD',
     analyze_feedback: '反馈分析',

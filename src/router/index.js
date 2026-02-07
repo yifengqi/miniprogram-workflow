@@ -32,6 +32,12 @@ const routes = [
     meta: { title: 'Demo代码' }
   },
   {
+    path: '/test',
+    name: 'TestWorkflow',
+    component: () => import('@/views/TestWorkflow.vue'),
+    meta: { title: '测试工作台' }
+  },
+  {
     path: '/iteration',
     name: 'Iteration',
     component: () => import('@/views/IterationManager.vue'),

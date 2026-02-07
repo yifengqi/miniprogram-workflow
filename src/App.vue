@@ -57,6 +57,11 @@
             <span>Demo代码</span>
           </el-menu-item>
           
+          <el-menu-item index="/test">
+            <el-icon><Checked /></el-icon>
+            <span>测试工作台</span>
+          </el-menu-item>
+          
           <el-menu-item index="/iteration">
             <el-icon><Operation /></el-icon>
             <span>迭代管理</span>

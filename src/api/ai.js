@@ -920,6 +920,86 @@ ${plan.cloudFunctions.map(f => `${f.name} - ${f.description}`).join('\n')}
     }
   }
   
+  // ========== 第3步：生成部署指南 + 测试指南 ==========
+  if (onProgress) onProgress({ step: 2, total: totalFiles, current: '生成部署和测试指南...', percentage: 95 })
+  
+  const guideLogId = aiLogger.start('generate_demo_step3_guides', { projectName: plan.projectName })
+  
+  try {
+    const hasCloud = plan.cloudFunctions && plan.cloudFunctions.length > 0
+    const pageList = plan.files.filter(f => f.path.includes('pages/')).map(f => f.path).join(', ')
+    
+    const guidePrompt = `请为以下微信小程序项目生成「快速部署指南」和「测试指南」。
+
+项目名：${plan.projectName}
+文件数：${plan.files.length} 个
+${hasCloud ? `云函数：${plan.cloudFunctions.map(f => f.name).join(', ')}` : '无云函数'}
+页面列表：${pageList || '(无)'}
+
+PRD摘要：
+${prdDev?.slice(0, 1500) || '(无)'}
+
+⚠️ 只输出纯JSON，不加任何说明文字：
+{
+  "deployGuide": {
+    "title": "快速部署指南",
+    "prerequisites": ["前置条件1", "前置条件2"],
+    "steps": [
+      { "title": "步骤标题", "detail": "详细操作说明", "tip": "小贴士(可选)" }
+    ],
+    "envConfig": [
+      { "name": "配置项名称", "value": "示例值", "description": "说明" }
+    ],
+    "commonIssues": [
+      { "problem": "常见问题描述", "solution": "解决方案" }
+    ]
+  },
+  "testGuide": {
+    "title": "测试指南",
+    "testEnv": "推荐的测试环境说明",
+    "quickTests": [
+      { "name": "快速冒烟测试项", "steps": "操作步骤", "expected": "预期结果" }
+    ],
+    "testFlow": "建议的测试顺序和流程说明（一段文字）",
+    "deviceTests": "真机测试注意事项",
+    "performanceTips": "性能关注点"
+  }
+}
+
+要求：
+1. 部署步骤要非常具体，针对微信开发者工具的实际操作
+2. ${hasCloud ? '包含云开发环境配置和云函数部署步骤' : '无需云开发相关步骤'}
+3. 测试指南中的快速冒烟测试要覆盖核心页面和主流程
+4. 常见问题要写开发者实际会遇到的（如AppID、域名白名单等）`
+
+    const guideResponse = await callAI([
+      { role: 'system', content: '你是微信小程序部署和测试专家。只输出纯JSON。' },
+      { role: 'user', content: guidePrompt }
+    ], { temperature: 0.3, maxTokens: 3072 })
+    
+    aiLogger.updateRawContent(guideLogId, guideResponse)
+    const guides = robustJsonParse(guideResponse)
+    
+    // 合并到plan
+    plan.deployGuide = guides.deployGuide || null
+    plan.testGuide = guides.testGuide || null
+    
+    // 同时更新setup（向后兼容）
+    if (guides.deployGuide?.steps) {
+      plan.setup = {
+        steps: guides.deployGuide.steps.map((s, i) => `${i + 1}. ${s.title}: ${s.detail}`),
+        notes: guides.deployGuide.commonIssues?.map(i => `${i.problem} → ${i.solution}`) || []
+      }
+    }
+    
+    aiLogger.success(guideLogId, { hasDeployGuide: !!plan.deployGuide, hasTestGuide: !!plan.testGuide })
+    
+  } catch (error) {
+    aiLogger.error(guideLogId, error)
+    // 指南生成失败不影响整体
+    console.warn('部署/测试指南生成失败:', error.message)
+  }
+  
   if (onProgress) onProgress({ step: 2, total: totalFiles, current: '全部完成!', percentage: 100 })
   
   return plan
