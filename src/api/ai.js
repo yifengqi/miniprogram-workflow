@@ -1015,7 +1015,6 @@ function createBatches(arr, batchSize) {
   }
   return batches
 }
-}
 
 /**
  * 生成GitHub仓库配置
