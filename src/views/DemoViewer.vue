@@ -96,7 +96,7 @@
         <!-- ⭐ 主操作区：保存代码 -->
         <div class="card save-card">
           <h3>💾 保存代码到本地</h3>
-          <p class="save-desc">选择一个文件夹，代码会直接写入该目录，之后用 GitHub Desktop 做版本管理</p>
+          <p class="save-desc">选择一个文件夹，代码直接写入，然后用 GitHub Desktop 管理版本</p>
           
           <div class="save-actions">
             <el-button 
@@ -106,18 +106,7 @@
               :loading="savingToFolder"
             >
               <el-icon><FolderAdd /></el-icon>
-              {{ savedFolderName ? `更新到 ${savedFolderName}` : '选择文件夹保存' }}
-            </el-button>
-            
-            <el-button 
-              v-if="savedFolderName"
-              type="success"
-              size="large"
-              @click="openInGitHubDesktop"
-              :loading="generatingCommit"
-            >
-              <el-icon><Monitor /></el-icon>
-              {{ generatingCommit ? 'AI 生成 commit...' : '用 GitHub Desktop 打开' }}
+              {{ savedFolderName ? `保存到 ${savedFolderName}` : '选择文件夹保存' }}
             </el-button>
             
             <el-button 
@@ -134,25 +123,18 @@
             <template v-if="saveResult.type === 'success'">
               <div>✅ 已保存 {{ saveResult.fileCount }} 个文件到「{{ saveResult.folderName }}」</div>
               
-              <!-- 显示 AI 生成的 commit message -->
+              <!-- AI commit message -->
               <div v-if="saveResult.commitMsg || lastCommitMessage" class="commit-preview">
-                <div class="commit-label">📋 Commit Message（已复制到剪贴板）：</div>
-                <div class="commit-box">
+                <div class="commit-label">📋 Commit Message（已复制到剪贴板，在 GitHub Desktop 中粘贴）：</div>
+                <div class="commit-box" @click="copyCommitMsg">
                   <div class="commit-summary">{{ (saveResult.commitMsg || lastCommitMessage).summary }}</div>
                   <div class="commit-desc">{{ (saveResult.commitMsg || lastCommitMessage).description }}</div>
+                  <span class="copy-hint">点击复制</span>
                 </div>
               </div>
               
-              <!-- 终端命令一键复制 -->
-              <div class="terminal-cmd-area">
-                <div class="terminal-label">打开终端（Terminal），粘贴以下命令运行：</div>
-                <div class="terminal-box" @click="copyTerminalCmd">
-                  <code>{{ terminalCommand }}</code>
-                  <span class="copy-hint">点击复制</span>
-                </div>
-                <div class="save-hint">
-                  运行后会自动：初始化 Git → 提交代码 → 打开 GitHub Desktop → 点 Publish 即可上传
-                </div>
+              <div class="save-hint">
+                打开 GitHub Desktop → Add Local Repository → 选择该文件夹 → Cmd+V 粘贴 commit message → Commit → Publish
               </div>
             </template>
             <span v-else>❌ {{ saveResult.message }}</span>
@@ -418,7 +400,7 @@ import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
 import { 
   InfoFilled, Loading, Link, Download, Upload, Reading, 
   Search, Document, CopyDocument, FolderOpened, ChatDotRound, Checked,
-  FolderAdd, Monitor
+  FolderAdd
 } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { callAI } from '@/api/ai'
@@ -443,23 +425,17 @@ const savedFolderName = ref('')
 const savedProjectName = ref('')  // 保存时的项目子目录名
 const saveResult = ref(null)
 const lastCommitMessage = ref(null)  // { summary, description }
-const generatingCommit = ref(false)
 let savedDirHandle = null  // File System Access API 的目录句柄
 
-// ⭐ 终端命令（用户粘贴到 Terminal 执行）
-const terminalCommand = computed(() => {
-  const projName = savedProjectName.value || demoCode.value.projectName || projectStore.currentProject?.name || 'project'
-  const commitSummary = lastCommitMessage.value?.summary || `feat: ${projName} Phase ${viewPhase.value}`
-  // 用户需要先 cd 到保存的目录，我们提供剩余命令
-  return `cd ~/*/"${projName}" && git init && git add . && git commit -m "${commitSummary}" && open -a "GitHub Desktop" .`
-})
-
-async function copyTerminalCmd() {
+// ⭐ 复制 commit message
+async function copyCommitMsg() {
+  const msg = lastCommitMessage.value || saveResult.value?.commitMsg
+  if (!msg) return
   try {
-    await navigator.clipboard.writeText(terminalCommand.value)
-    ElMessage.success('终端命令已复制，打开 Terminal 粘贴运行即可')
+    await navigator.clipboard.writeText(`${msg.summary}\n\n${msg.description}`)
+    ElMessage.success('Commit message 已复制')
   } catch {
-    ElMessage.error('复制失败，请手动复制')
+    ElMessage.error('复制失败')
   }
 }
 
@@ -635,6 +611,33 @@ async function saveToLocalFolder() {
     
     const projectName = demoCode.value.projectName || projectStore.currentProject.name
     savedProjectName.value = projectName
+    
+    // ⭐ 检查目录是否已存在（覆盖确认）
+    let dirExists = false
+    try {
+      await dirHandle.getDirectoryHandle(projectName, { create: false })
+      dirExists = true
+    } catch {
+      // 目录不存在，正常创建
+    }
+    
+    if (dirExists) {
+      try {
+        await ElMessageBox.confirm(
+          `文件夹「${projectName}」已存在，继续保存将覆盖现有文件。\n\n如果该文件夹已关联 Git 仓库，覆盖后可以在 GitHub Desktop 中查看文件变更差异。`,
+          '确认覆盖',
+          {
+            confirmButtonText: '确认覆盖',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      } catch {
+        // 用户取消
+        savingToFolder.value = false
+        return
+      }
+    }
     
     // 创建项目子目录
     const projectDir = await dirHandle.getDirectoryHandle(projectName, { create: true })
@@ -934,77 +937,6 @@ async function generateCommitMessage() {
       description: `Phase ${phase} Demo 代码，${code.files?.length || 0} 个文件`
     }
   }
-}
-
-/**
- * ⭐ 打开 GitHub Desktop（终端命令方案，解决权限问题）
- */
-async function openInGitHubDesktop() {
-  if (!savedFolderName.value) {
-    ElMessage.warning('请先保存代码到本地文件夹')
-    return
-  }
-  
-  // 如果还没有 commit message，先生成
-  generatingCommit.value = true
-  let commitMsg = lastCommitMessage.value
-  if (!commitMsg) {
-    commitMsg = await generateCommitMessage()
-    lastCommitMessage.value = commitMsg
-  }
-  generatingCommit.value = false
-  
-  const projName = savedProjectName.value || demoCode.value.projectName || projectStore.currentProject?.name
-  const commitSummary = commitMsg?.summary || `feat: ${projName}`
-  
-  // 生成终端命令并复制
-  const cmd = terminalCommand.value
-  try {
-    await navigator.clipboard.writeText(cmd)
-  } catch {}
-  
-  const summaryPreview = commitMsg?.summary || 'feat: Phase X ...'
-  const descPreview = commitMsg?.description || '...'
-  const escapedCmd = cmd.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  
-  ElMessageBox.alert(
-    `<div style="line-height: 1.8;">
-      <p><strong>📋 AI Commit Message：</strong></p>
-      <div style="background: #1a1a2e; color: #67c23a; padding: 10px 14px; border-radius: 8px; margin: 6px 0 14px; font-family: monospace; font-size: 13px;">
-        <div style="font-weight: 600;">${summaryPreview}</div>
-        <div style="color: #aaa; white-space: pre-line; margin-top: 2px;">${descPreview}</div>
-      </div>
-
-      <p><strong>操作（2步完成）：</strong></p>
-
-      <p style="margin: 8px 0 4px;"><strong>第1步</strong> — 打开 Terminal（终端），粘贴以下命令：</p>
-      <div style="background: #0d1117; color: #58a6ff; padding: 10px 14px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; cursor: pointer; border: 1px solid #30363d;" onclick="navigator.clipboard.writeText(this.innerText.trim())">
-        ${escapedCmd}
-      </div>
-      <p style="font-size: 12px; color: #999; margin: 4px 0 0;">（已复制到剪贴板，直接 Cmd+V 粘贴）</p>
-
-      <p style="margin: 14px 0 4px;"><strong>第2步</strong> — GitHub Desktop 打开后：</p>
-      <ol style="margin: 0; padding-left: 20px;">
-        <li>确认文件列表 → 点击 <strong>Publish repository</strong></li>
-        <li>选择公开或私有 → 点击 <strong>Publish</strong></li>
-        <li>✅ 代码已上传到 GitHub</li>
-      </ol>
-
-      <div style="background: #fdf6ec; border: 1px solid #e6a23c; padding: 8px 12px; border-radius: 6px; margin-top: 14px; font-size: 13px; color: #e6a23c;">
-        ⚠️ 如果提示 <strong>"GitHub Desktop 未安装"</strong> → <a href="https://desktop.github.com/" target="_blank" style="color: #e6a23c; text-decoration: underline;">点击下载安装</a>，安装后重新粘贴命令即可
-      </div>
-      
-      <div style="background: #f0f9eb; border: 1px solid #67c23a; padding: 8px 12px; border-radius: 6px; margin-top: 8px; font-size: 13px; color: #67c23a;">
-        💡 后续更新代码：保存到本地 → 打开 GitHub Desktop → 看到 diff → 写 commit → Push
-      </div>
-    </div>`,
-    '🚀 用 GitHub Desktop 提交代码',
-    {
-      dangerouslyUseHTMLString: true,
-      confirmButtonText: '知道了',
-      customStyle: { maxWidth: '620px' }
-    }
-  )
 }
 
 // 推送到GitHub
@@ -1346,53 +1278,6 @@ function goToIteration() {
   font-size: 12px;
 }
 
-/* 终端命令区域 */
-.terminal-cmd-area {
-  margin-top: 14px;
-}
-
-.terminal-label {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  font-weight: 500;
-}
-
-.terminal-box {
-  background: #0d1117;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  color: #58a6ff;
-  word-break: break-all;
-  line-height: 1.6;
-  cursor: pointer;
-  border: 1px solid #30363d;
-  position: relative;
-  transition: border-color 0.2s;
-}
-
-.terminal-box:hover {
-  border-color: #58a6ff;
-}
-
-.terminal-box .copy-hint {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 11px;
-  color: #8b949e;
-  background: #161b22;
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
-.terminal-box:hover .copy-hint {
-  color: #58a6ff;
-}
-
 /* Commit message 预览 */
 .commit-preview {
   margin-top: 12px;
@@ -1410,6 +1295,29 @@ function goToIteration() {
   border-radius: 8px;
   font-family: 'Courier New', monospace;
   font-size: 13px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+  position: relative;
+}
+
+.commit-box:hover {
+  border-color: #67c23a;
+}
+
+.commit-box .copy-hint {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  font-size: 11px;
+  color: #666;
+  background: #2d2d3d;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.commit-box:hover .copy-hint {
+  color: #67c23a;
 }
 
 .commit-summary {
